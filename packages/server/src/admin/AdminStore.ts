@@ -234,7 +234,7 @@ export class AdminStore {
 
   private rowToVenue(row: any): Venue {
     const accountRows = this.db.prepare(
-      'SELECT account_config_id FROM venue_accounts WHERE venue_id=?'
+      'SELECT account_config_id FROM venue_accounts WHERE venue_id=? ORDER BY rowid'
     ).all(row.id) as any[];
     return {
       id: row.id,

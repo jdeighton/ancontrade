@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ancontrade/shared": "*",
+    "@fastify/websocket": "^11.2.0",
     "@fixenginelib/core": "file:../../../fixserver/packages/core",
     "@matchingengine/engine": "file:../../../matchingengine/packages/engine",
     "@matchingengine/gateway": "file:../../../matchingengine/packages/gateway",
