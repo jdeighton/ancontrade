@@ -31,12 +31,15 @@ export function buildServer(dbPath = ':memory:', engine?: IFIXEngine) {
     return { status: 'ok' };
   });
 
-  // WebSocket push: venue status changes
+  // WebSocket push: venue status + order updates
   app.get('/ws', { websocket: true }, (socket) => {
-    const unsub = venueManager.onStatusChange((status) => {
+    const unsubVenue = venueManager.onStatusChange((status) => {
       socket.send(JSON.stringify({ type: 'venue-status', payload: status }));
     });
-    socket.on('close', unsub);
+    const unsubOrder = orderManager.onOrderUpdate((record) => {
+      socket.send(JSON.stringify({ type: 'order-update', payload: record }));
+    });
+    socket.on('close', () => { unsubVenue(); unsubOrder(); });
   });
 
   registerAdminRoutes(app, adminStore);

@@ -39,6 +39,7 @@ interface VenueSessionPair {
 export class VenueManager {
   private readonly active = new Map<string, VenueSessionPair>();
   private readonly listeners = new Set<(s: VenueStatus) => void>();
+  private readonly orListeners = new Set<(venueId: string, raw: string) => void>();
   private readonly instruments = new Map<string, Instrument[]>();
 
   constructor(
@@ -107,6 +108,11 @@ export class VenueManager {
     return this.instruments.get(venueId) ?? [];
   }
 
+  onORMessage(callback: (venueId: string, raw: string) => void): () => void {
+    this.orListeners.add(callback);
+    return () => this.orListeners.delete(callback);
+  }
+
   private handleMessage(sessionId: string, raw: string): void {
     for (const [venueId, pair] of this.active) {
       if (pair.mdSession.id === sessionId) {
@@ -114,6 +120,10 @@ export class VenueManager {
         if (msgType === 'y') {
           this.instruments.set(venueId, parseSecurityListRaw(raw));
         }
+        return;
+      }
+      if (pair.orSession.id === sessionId) {
+        for (const cb of this.orListeners) cb(venueId, raw);
         return;
       }
     }

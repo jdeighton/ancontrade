@@ -11,6 +11,7 @@ class StubSession extends EventEmitter implements IFIXSession {
 
 class StubFIXEngine implements IFIXEngine {
   private sessions = new Map<string, StubSession>();
+  private msgCbs: Array<(id: string, raw: string) => void> = [];
   readonly sent: Array<{ sessionId: string; fields: Map<number, string> }> = [];
 
   addSession(config: { senderCompId: string; targetCompId: string }): IFIXSession {
@@ -26,7 +27,14 @@ class StubFIXEngine implements IFIXEngine {
     this.sent.push({ sessionId, fields });
   }
 
-  onMessage(_cb: (sessionId: string, raw: string) => void) { return () => {}; }
+  onMessage(cb: (sessionId: string, raw: string) => void) {
+    this.msgCbs.push(cb);
+    return () => { this.msgCbs = this.msgCbs.filter(c => c !== cb); };
+  }
+
+  triggerIncoming(sessionId: string, raw: string) {
+    this.msgCbs.forEach(cb => cb(sessionId, raw));
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -134,5 +142,43 @@ describe('GET /orders', () => {
     expect(orders).toHaveLength(1);
     expect(orders[0].symbol).toBe('EUR/USD');
     expect(orders[0].status).toBe('PendingNew');
+  });
+});
+
+describe('Execution report sequence — PendingNew → New → PartiallyFilled → Filled', () => {
+  const SOH = '\x01';
+  const er = (fields: Record<number, string>) =>
+    Object.entries(fields).map(([t, v]) => `${t}=${v}`).join(SOH);
+
+  it('replays ER sequence and final GET /orders reflects Filled state', async () => {
+    const { app, engine, venueId } = await makeConnectedServer();
+
+    const postRes = await app.inject({
+      method: 'POST', url: '/orders',
+      body: { venueId, symbol: 'EUR/USD', side: 'buy', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' },
+    });
+    const { clOrdId } = postRes.json();
+    const orSessionId = 'CLI-OR_EXCH-FIX.4.4';
+
+    // ER sequence: new → partial → filled
+    engine.triggerIncoming(orSessionId, er({ 35: '8', 11: clOrdId, 37: 'EXCH001', 39: '0', 14: '0', 6: '0' }));
+    engine.triggerIncoming(orSessionId, er({ 35: '8', 11: clOrdId, 37: 'EXCH001', 39: '1', 14: '500', 6: '1.1050' }));
+    engine.triggerIncoming(orSessionId, er({ 35: '8', 11: clOrdId, 37: 'EXCH001', 39: '2', 14: '1000', 6: '1.1050' }));
+
+    const res = await app.inject({ method: 'GET', url: '/orders' });
+    const [order] = res.json();
+    expect(order.status).toBe('Filled');
+    expect(order.filledQty).toBe(1000);
+    expect(order.avgFillPrice).toBe(1.1050);
+    expect(order.exchOrdId).toBe('EXCH001');
+  });
+
+  it('onOrderUpdate WS callbacks fire on each ER — covered by OrderManager.test.ts', async () => {
+    const { app, venueId } = await makeConnectedServer();
+    const postRes = await app.inject({
+      method: 'POST', url: '/orders',
+      body: { venueId, symbol: 'EUR/USD', side: 'buy', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' },
+    });
+    expect(postRes.statusCode).toBe(201);
   });
 });

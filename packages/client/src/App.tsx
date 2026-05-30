@@ -42,9 +42,21 @@ export function App() {
   useEffect(() => {
     const ws = new WebSocket(`ws://${location.host}/ws`);
     ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data) as { type: string; payload: VenueStatus };
+      const msg = JSON.parse(e.data) as { type: string; payload: VenueStatus | OrderRecord };
       if (msg.type === 'venue-status') {
-        setVenueStatus(v => (v?.venueId === msg.payload.venueId || !v) ? msg.payload : v);
+        const status = msg.payload as VenueStatus;
+        setVenueStatus(v => (v?.venueId === status.venueId || !v) ? status : v);
+      } else if (msg.type === 'order-update') {
+        const updated = msg.payload as OrderRecord;
+        setOrders(prev => {
+          const idx = prev.findIndex(o => o.clOrdId === updated.clOrdId);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = updated;
+            return next;
+          }
+          return [...prev, updated];
+        });
       }
     };
     wsRef.current = ws;
@@ -80,10 +92,18 @@ export function App() {
   }
 
   const orConnected = venueStatus?.venueId === selectedVenueId && venueStatus.orConnected;
+  const openStatuses = new Set(['PendingNew', 'New', 'PartiallyFilled']);
+  const hasOpenOrders = orders.some(o => openStatuses.has(o.status));
 
   return (
     <div style={{ fontFamily: 'sans-serif', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <h2 style={{ margin: 0 }}>Ancontrade</h2>
+
+      {orConnected && hasOpenOrders && (
+        <div style={{ padding: '8px 12px', background: '#7a4f00', color: '#ffd580', borderRadius: 4, fontSize: 13 }}>
+          Warning: you have open orders. Disconnecting will leave them working in the exchange.
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <label>

@@ -49,6 +49,8 @@ export interface OrderRecord {
   traderId: string;
   status: OrderStatus;
   filledQty: number;
+  exchOrdId?: string;
+  avgFillPrice?: number;
 }
 
 export class AdminStore {
@@ -101,7 +103,9 @@ export class AdminStore {
         account TEXT NOT NULL,
         trader_id TEXT NOT NULL,
         status TEXT NOT NULL,
-        filled_qty REAL NOT NULL DEFAULT 0
+        filled_qty REAL NOT NULL DEFAULT 0,
+        exch_ord_id TEXT,
+        avg_fill_price REAL
       );
     `);
   }
@@ -278,12 +282,14 @@ export class AdminStore {
     return row ? rowToOrder(row) : undefined;
   }
 
-  updateOrderStatus(clOrdId: string, patch: { status: OrderStatus; filledQty?: number }): OrderRecord {
+  updateOrderStatus(clOrdId: string, patch: { status: OrderStatus; filledQty?: number; exchOrdId?: string; avgFillPrice?: number }): OrderRecord {
     const existing = this.getOrder(clOrdId);
     if (!existing) throw new Error(`Order ${clOrdId} not found`);
     const filledQty = patch.filledQty ?? existing.filledQty;
-    this.db.prepare('UPDATE orders SET status=?, filled_qty=? WHERE cl_ord_id=?').run(patch.status, filledQty, clOrdId);
-    return { ...existing, status: patch.status, filledQty };
+    const exchOrdId = patch.exchOrdId ?? existing.exchOrdId ?? null;
+    const avgFillPrice = patch.avgFillPrice ?? existing.avgFillPrice ?? null;
+    this.db.prepare('UPDATE orders SET status=?, filled_qty=?, exch_ord_id=?, avg_fill_price=? WHERE cl_ord_id=?').run(patch.status, filledQty, exchOrdId, avgFillPrice, clOrdId);
+    return { ...existing, status: patch.status, filledQty, exchOrdId: exchOrdId ?? undefined, avgFillPrice: avgFillPrice ?? undefined };
   }
 
   deleteAllOrders(): void {
@@ -346,5 +352,7 @@ function rowToOrder(row: any): OrderRecord {
     traderId: row.trader_id,
     status: row.status as OrderStatus,
     filledQty: row.filled_qty,
+    ...(row.exch_ord_id  != null && { exchOrdId: row.exch_ord_id }),
+    ...(row.avg_fill_price != null && { avgFillPrice: row.avg_fill_price }),
   };
 }

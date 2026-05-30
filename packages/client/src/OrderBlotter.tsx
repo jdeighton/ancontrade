@@ -20,7 +20,9 @@ const columnDefs: ColDef<OrderRecord>[] = [
       return { color: colors[p.value] };
     },
   },
-  { field: 'filledQty', headerName: 'Filled',        flex: 1 },
+  { field: 'filledQty',                                          headerName: 'Filled',     flex: 1 },
+  { valueGetter: (p: any) => p.data.avgFillPrice,               headerName: 'Avg Px',     flex: 1 },
+  { valueGetter: (p: any) => p.data.exchOrdId ?? '',            headerName: 'Exch OrdID', flex: 2 },
 ];
 
 interface Props {
