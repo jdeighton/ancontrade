@@ -7,6 +7,7 @@ import { VenueManager, type IFIXEngine } from './venue/VenueManager.js';
 import { registerVenueRoutes } from './venue/venueRoutes.js';
 import { OrderManager } from './orders/OrderManager.js';
 import { registerOrderRoutes } from './orders/orderRoutes.js';
+import { registerInstrumentRoutes } from './instruments/instrumentRoutes.js';
 
 export function buildServer(dbPath = ':memory:', engine?: IFIXEngine) {
   const app = Fastify({ logger: false });
@@ -41,6 +42,7 @@ export function buildServer(dbPath = ':memory:', engine?: IFIXEngine) {
   registerAdminRoutes(app, adminStore);
   registerVenueRoutes(app, venueManager);
   registerOrderRoutes(app, orderManager, adminStore);
+  registerInstrumentRoutes(app, venueManager);
 
   return app;
 }

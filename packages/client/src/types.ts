@@ -43,6 +43,14 @@ export interface OrderRecord {
   filledQty: number;
 }
 
+export interface Instrument {
+  symbol: string;
+  tickSize: number;
+  contractSize?: number;
+  currency?: string;
+  expiry?: string;
+}
+
 export interface VenueStatus {
   venueId: string;
   mdConnected: boolean;

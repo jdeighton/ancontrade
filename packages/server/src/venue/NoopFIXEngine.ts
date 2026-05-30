@@ -19,4 +19,8 @@ export class NoopFIXEngine implements IFIXEngine {
   sendMessage(sessionId: string, fields: Map<number, string>) {
     console.log(`[NoopFIXEngine] sendMessage on ${sessionId}: MsgType=${fields.get(35)} ClOrdID=${fields.get(11)}`);
   }
+
+  onMessage(_cb: (sessionId: string, raw: string) => void): () => void {
+    return () => {};
+  }
 }

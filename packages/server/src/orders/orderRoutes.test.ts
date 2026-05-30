@@ -25,6 +25,8 @@ class StubFIXEngine implements IFIXEngine {
   sendMessage(sessionId: string, fields: Map<number, string>) {
     this.sent.push({ sessionId, fields });
   }
+
+  onMessage(_cb: (sessionId: string, raw: string) => void) { return () => {}; }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

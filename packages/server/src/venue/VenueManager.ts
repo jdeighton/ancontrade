@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import type { AdminStore } from '../admin/AdminStore.js';
+import { parseSecurityListRaw, type Instrument } from '../instruments/parseSecurityListRaw.js';
 
 export interface IFIXSession {
   readonly id: string;
@@ -18,6 +20,7 @@ export interface IFIXEngine {
   }): IFIXSession;
   removeSession(sessionId: string): Promise<void>;
   sendMessage(sessionId: string, fields: Map<number, string>): void;
+  onMessage(callback: (sessionId: string, raw: string) => void): () => void;
 }
 
 export interface VenueStatus {
@@ -36,11 +39,16 @@ interface VenueSessionPair {
 export class VenueManager {
   private readonly active = new Map<string, VenueSessionPair>();
   private readonly listeners = new Set<(s: VenueStatus) => void>();
+  private readonly instruments = new Map<string, Instrument[]>();
 
   constructor(
     private readonly engine: IFIXEngine,
     private readonly store: AdminStore,
-  ) {}
+  ) {
+    if (engine) {
+      engine.onMessage((sessionId, raw) => this.handleMessage(sessionId, raw));
+    }
+  }
 
   connect(venueId: string): void {
     if (this.active.has(venueId)) return;
@@ -59,13 +67,22 @@ export class VenueManager {
       orConnected: false,
     };
 
-    const makeHandler = (key: 'mdConnected' | 'orConnected') => (status: string) => {
-      pair[key] = status === 'active';
+    pair.mdSession.on('status', (status) => {
+      pair.mdConnected = status === 'active';
+      if (status === 'active') {
+        this.engine.sendMessage(pair.mdSession.id, new Map([
+          [35, 'x'],
+          [320, randomUUID()],
+          [559, '4'],
+        ]));
+      }
       this.emit(venueId, { mdConnected: pair.mdConnected, orConnected: pair.orConnected });
-    };
+    });
 
-    pair.mdSession.on('status', makeHandler('mdConnected'));
-    pair.orSession.on('status', makeHandler('orConnected'));
+    pair.orSession.on('status', (status) => {
+      pair.orConnected = status === 'active';
+      this.emit(venueId, { mdConnected: pair.mdConnected, orConnected: pair.orConnected });
+    });
 
     this.active.set(venueId, pair);
   }
@@ -84,6 +101,22 @@ export class VenueManager {
   getStatus(venueId: string): VenueStatus {
     const pair = this.active.get(venueId);
     return { venueId, mdConnected: pair?.mdConnected ?? false, orConnected: pair?.orConnected ?? false };
+  }
+
+  getInstruments(venueId: string): Instrument[] {
+    return this.instruments.get(venueId) ?? [];
+  }
+
+  private handleMessage(sessionId: string, raw: string): void {
+    for (const [venueId, pair] of this.active) {
+      if (pair.mdSession.id === sessionId) {
+        const msgType = raw.match(/(?:^|\x01)35=([^\x01]+)/)?.[1];
+        if (msgType === 'y') {
+          this.instruments.set(venueId, parseSecurityListRaw(raw));
+        }
+        return;
+      }
+    }
   }
 
   sendOrderMessage(venueId: string, fields: Map<number, string>): void {

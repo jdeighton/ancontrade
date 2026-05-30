@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AccountConfig, OrderRecord, TraderIdConfig, Venue, VenueStatus } from './types.js';
+import type { AccountConfig, Instrument, OrderRecord, TraderIdConfig, Venue, VenueStatus } from './types.js';
 import { OrderTicket } from './OrderTicket.js';
 import { OrderBlotter } from './OrderBlotter.js';
 
@@ -16,7 +16,8 @@ export function App() {
   const [selectedVenueId, setSelectedVenueId] = useState('');
   const [venueStatus, setVenueStatus] = useState<VenueStatus | null>(null);
   const [orders, setOrders] = useState<OrderRecord[]>([]);
-  const [symbol, setSymbol] = useState('EUR/USD');
+  const [instruments, setInstruments] = useState<Instrument[]>([]);
+  const [selectedSymbol, setSelectedSymbol] = useState('');
   const wsRef = useRef<WebSocket | null>(null);
 
   const refreshOrders = useCallback(() => {
@@ -58,9 +59,19 @@ export function App() {
     ? (traderIdConfigs.find(tr => tr.id === venue.traderIdConfigId)?.traderId ?? '')
     : '';
 
+  const refreshInstruments = useCallback((venueId: string) => {
+    apiFetch<Instrument[]>(`/venues/${venueId}/instruments`)
+      .then(instrs => {
+        setInstruments(instrs);
+        if (instrs.length > 0) setSelectedSymbol(instrs[0].symbol);
+      })
+      .catch(console.error);
+  }, []);
+
   async function handleConnect() {
     if (!selectedVenueId) return;
     await fetch(`/venues/${selectedVenueId}/connect`, { method: 'POST' });
+    refreshInstruments(selectedVenueId);
   }
 
   async function handleDisconnect() {
@@ -90,18 +101,30 @@ export function App() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <label>
-          Symbol:{' '}
-          <input value={symbol} onChange={e => setSymbol(e.target.value)} style={{ width: 120 }} />
-        </label>
-      </div>
+      {instruments.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label>
+            Instrument:{' '}
+            <select value={selectedSymbol} onChange={e => setSelectedSymbol(e.target.value)}>
+              {instruments.map(i => (
+                <option key={i.symbol} value={i.symbol}>{i.symbol}</option>
+              ))}
+            </select>
+          </label>
+          {instruments.find(i => i.symbol === selectedSymbol) && (
+            <span style={{ fontSize: 12, color: '#888' }}>
+              tick: {instruments.find(i => i.symbol === selectedSymbol)!.tickSize}
+            </span>
+          )}
+        </div>
+      )}
 
       {venue && (
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
           <OrderTicket
             venueId={selectedVenueId}
-            symbol={symbol}
+            symbol={selectedSymbol || 'N/A'}
+            tickSize={instruments.find(i => i.symbol === selectedSymbol)?.tickSize}
             accounts={venueAccounts}
             traderId={venueTraderId}
             onSubmitted={refreshOrders}

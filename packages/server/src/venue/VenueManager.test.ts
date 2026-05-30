@@ -13,6 +13,7 @@ class StubSession extends EventEmitter implements IFIXSession {
 
 class StubFIXEngine implements IFIXEngine {
   private sessions = new Map<string, StubSession>();
+  private msgCallbacks: Array<(sessionId: string, raw: string) => void> = [];
   readonly sentMessages: Array<{ sessionId: string; fields: Map<number, string> }> = [];
 
   addSession(config: { senderCompId: string; targetCompId: string }): IFIXSession {
@@ -26,6 +27,15 @@ class StubFIXEngine implements IFIXEngine {
 
   sendMessage(sessionId: string, fields: Map<number, string>) {
     this.sentMessages.push({ sessionId, fields });
+  }
+
+  onMessage(cb: (sessionId: string, raw: string) => void) {
+    this.msgCallbacks.push(cb);
+    return () => { this.msgCallbacks = this.msgCallbacks.filter(c => c !== cb); };
+  }
+
+  triggerIncoming(sessionId: string, raw: string) {
+    for (const cb of this.msgCallbacks) cb(sessionId, raw);
   }
 
   trigger(id: string, status: string) {
@@ -138,5 +148,31 @@ describe('VenueManager', () => {
 
   it('sendOrderMessage throws when venue is not connected', () => {
     expect(() => vm.sendOrderMessage('unknown-venue-id', new Map())).toThrow('not connected');
+  });
+
+  it('sends SecurityListRequest (35=x) when MD session becomes active', () => {
+    engine.trigger(mdSessionId, 'active');
+    const secListReq = engine.sentMessages.find(m => m.fields.get(35) === 'x');
+    expect(secListReq).toBeDefined();
+    expect(secListReq!.sessionId).toBe(mdSessionId);
+    expect(secListReq!.fields.get(559)).toBe('4');
+  });
+
+  it('stores instruments when 35=y arrives on MD session', () => {
+    const secListRaw = '35=y\x01146=1\x0155=EUR/USD\x01969=0.0001\x01231=100000\x0115=EUR\x01541=20261231';
+    engine.triggerIncoming(mdSessionId, secListRaw);
+    expect(vm.getInstruments(venueId)).toEqual([
+      { symbol: 'EUR/USD', tickSize: 0.0001, contractSize: 100000, currency: 'EUR', expiry: '20261231' },
+    ]);
+  });
+
+  it('getInstruments returns [] before any SecurityList arrives', () => {
+    expect(vm.getInstruments(venueId)).toEqual([]);
+  });
+
+  it('does not store instruments for messages on OR session', () => {
+    const secListRaw = '35=y\x01146=1\x0155=EUR/USD\x01969=0.0001';
+    engine.triggerIncoming(orSessionId, secListRaw);
+    expect(vm.getInstruments(venueId)).toEqual([]);
   });
 });
