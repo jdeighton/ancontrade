@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@ancontrade/shared": "*",
+    "ag-grid-community": "^35.3.0",
+    "ag-grid-react": "^35.3.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },

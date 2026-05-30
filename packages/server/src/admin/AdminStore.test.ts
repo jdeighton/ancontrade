@@ -151,3 +151,49 @@ describe('AdminStore — Venues', () => {
     expect(() => store.deleteSessionConfig(scId)).not.toThrow();
   });
 });
+
+describe('AdminStore — Orders', () => {
+  let store: AdminStore;
+  beforeEach(() => { store = new AdminStore(':memory:'); });
+
+  const baseOrder = {
+    clOrdId: '20260530-120000-1',
+    venueId: 'venue-1',
+    symbol: 'EUR/USD',
+    side: 'buy' as const,
+    price: 1.105,
+    quantity: 1000,
+    account: 'ACC001',
+    traderId: 'TRD1',
+  };
+
+  it('createOrder stores order with PendingNew status', () => {
+    const rec = store.createOrder(baseOrder);
+    expect(rec).toEqual({ ...baseOrder, status: 'PendingNew', filledQty: 0 });
+  });
+
+  it('getOrder returns the stored order', () => {
+    store.createOrder(baseOrder);
+    expect(store.getOrder(baseOrder.clOrdId)).toEqual({ ...baseOrder, status: 'PendingNew', filledQty: 0 });
+  });
+
+  it('listOrders returns all orders in insertion order', () => {
+    const a = store.createOrder(baseOrder);
+    const b = store.createOrder({ ...baseOrder, clOrdId: '20260530-120000-2' });
+    expect(store.listOrders()).toEqual([a, b]);
+  });
+
+  it('updateOrderStatus changes status and filledQty', () => {
+    store.createOrder(baseOrder);
+    const updated = store.updateOrderStatus(baseOrder.clOrdId, { status: 'PartiallyFilled', filledQty: 500 });
+    expect(updated.status).toBe('PartiallyFilled');
+    expect(updated.filledQty).toBe(500);
+    expect(store.getOrder(baseOrder.clOrdId)?.status).toBe('PartiallyFilled');
+  });
+
+  it('deleteAllOrders removes every order', () => {
+    store.createOrder(baseOrder);
+    store.deleteAllOrders();
+    expect(store.listOrders()).toEqual([]);
+  });
+});

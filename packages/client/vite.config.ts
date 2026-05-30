@@ -12,9 +12,13 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        rewrite: (path) => path.replace(/^\/api/, ''),
+      '/admin': 'http://localhost:3001',
+      '/venues': 'http://localhost:3001',
+      '/orders': 'http://localhost:3001',
+      '/health': 'http://localhost:3001',
+      '/ws': {
+        target: 'ws://localhost:3001',
+        ws: true,
       },
     },
   },

@@ -1,11 +1,14 @@
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
+import { ClientOrderIdGenerator } from '@ancontrade/shared';
 import { AdminStore } from './admin/AdminStore.js';
 import { registerAdminRoutes } from './admin/adminRoutes.js';
-import { VenueManager } from './venue/VenueManager.js';
+import { VenueManager, type IFIXEngine } from './venue/VenueManager.js';
 import { registerVenueRoutes } from './venue/venueRoutes.js';
+import { OrderManager } from './orders/OrderManager.js';
+import { registerOrderRoutes } from './orders/orderRoutes.js';
 
-export function buildServer(dbPath = ':memory:') {
+export function buildServer(dbPath = ':memory:', engine?: IFIXEngine) {
   const app = Fastify({ logger: false });
   void app.register(websocket);
 
@@ -14,7 +17,12 @@ export function buildServer(dbPath = ':memory:') {
     // Real FIX engine injected at startup via index.ts; use null here so tests
     // that only call /health don't need a real engine. VenueManager is unused
     // in those tests.
-    null as any,
+    engine ?? null as any,
+    adminStore,
+  );
+  const orderManager = new OrderManager(
+    new ClientOrderIdGenerator(new Date()),
+    venueManager,
     adminStore,
   );
 
@@ -32,6 +40,7 @@ export function buildServer(dbPath = ':memory:') {
 
   registerAdminRoutes(app, adminStore);
   registerVenueRoutes(app, venueManager);
+  registerOrderRoutes(app, orderManager, adminStore);
 
   return app;
 }

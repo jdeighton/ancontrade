@@ -13,6 +13,7 @@ class StubSession extends EventEmitter implements IFIXSession {
 
 class StubFIXEngine implements IFIXEngine {
   private sessions = new Map<string, StubSession>();
+  readonly sentMessages: Array<{ sessionId: string; fields: Map<number, string> }> = [];
 
   addSession(config: { senderCompId: string; targetCompId: string }): IFIXSession {
     const id = `${config.senderCompId}-${config.targetCompId}-FIX.4.4`;
@@ -22,6 +23,10 @@ class StubFIXEngine implements IFIXEngine {
   }
 
   async removeSession(id: string) { this.sessions.delete(id); }
+
+  sendMessage(sessionId: string, fields: Map<number, string>) {
+    this.sentMessages.push({ sessionId, fields });
+  }
 
   trigger(id: string, status: string) {
     const s = this.sessions.get(id);
@@ -121,5 +126,17 @@ describe('VenueManager', () => {
 
   it('disconnect for unknown venue is a no-op', async () => {
     await expect(vm.disconnect('unknown-venue-id')).resolves.toBeUndefined();
+  });
+
+  it('sendOrderMessage routes message to the OR session', () => {
+    const fields = new Map([[35, 'D'], [11, 'CID1']]);
+    vm.sendOrderMessage(venueId, fields);
+    expect(engine.sentMessages).toHaveLength(1);
+    expect(engine.sentMessages[0].sessionId).toBe(orSessionId);
+    expect(engine.sentMessages[0].fields).toBe(fields);
+  });
+
+  it('sendOrderMessage throws when venue is not connected', () => {
+    expect(() => vm.sendOrderMessage('unknown-venue-id', new Map())).toThrow('not connected');
   });
 });

@@ -17,6 +17,7 @@ export interface IFIXEngine {
     heartbeatIntervalSecs: number;
   }): IFIXSession;
   removeSession(sessionId: string): Promise<void>;
+  sendMessage(sessionId: string, fields: Map<number, string>): void;
 }
 
 export interface VenueStatus {
@@ -83,6 +84,12 @@ export class VenueManager {
   getStatus(venueId: string): VenueStatus {
     const pair = this.active.get(venueId);
     return { venueId, mdConnected: pair?.mdConnected ?? false, orConnected: pair?.orConnected ?? false };
+  }
+
+  sendOrderMessage(venueId: string, fields: Map<number, string>): void {
+    const pair = this.active.get(venueId);
+    if (!pair) throw new Error(`Venue ${venueId} is not connected`);
+    this.engine.sendMessage(pair.orSession.id, fields);
   }
 
   onStatusChange(callback: (s: VenueStatus) => void): () => void {

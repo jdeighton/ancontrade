@@ -36,6 +36,21 @@ export interface Venue {
   accountConfigIds: string[];
 }
 
+export type OrderStatus = 'PendingNew' | 'New' | 'PartiallyFilled' | 'Filled' | 'Cancelled' | 'Rejected';
+
+export interface OrderRecord {
+  clOrdId: string;
+  venueId: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  price: number;
+  quantity: number;
+  account: string;
+  traderId: string;
+  status: OrderStatus;
+  filledQty: number;
+}
+
 export class AdminStore {
   private readonly db: DatabaseSync;
 
@@ -75,6 +90,18 @@ export class AdminStore {
         venue_id TEXT NOT NULL,
         account_config_id TEXT NOT NULL,
         PRIMARY KEY (venue_id, account_config_id)
+      );
+      CREATE TABLE IF NOT EXISTS orders (
+        cl_ord_id TEXT PRIMARY KEY,
+        venue_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        price REAL NOT NULL,
+        quantity REAL NOT NULL,
+        account TEXT NOT NULL,
+        trader_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        filled_qty REAL NOT NULL DEFAULT 0
       );
     `);
   }
@@ -232,6 +259,37 @@ export class AdminStore {
     this.db.prepare('DELETE FROM venues WHERE id=?').run(id);
   }
 
+  // ─── Orders ───────────────────────────────────────────────────────────────
+
+  createOrder(data: Omit<OrderRecord, 'status' | 'filledQty'>): OrderRecord {
+    const record: OrderRecord = { ...data, status: 'PendingNew', filledQty: 0 };
+    this.db.prepare(
+      'INSERT INTO orders (cl_ord_id, venue_id, symbol, side, price, quantity, account, trader_id, status, filled_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(record.clOrdId, record.venueId, record.symbol, record.side, record.price, record.quantity, record.account, record.traderId, record.status, record.filledQty);
+    return record;
+  }
+
+  listOrders(): OrderRecord[] {
+    return (this.db.prepare('SELECT * FROM orders ORDER BY rowid').all() as any[]).map(rowToOrder);
+  }
+
+  getOrder(clOrdId: string): OrderRecord | undefined {
+    const row = this.db.prepare('SELECT * FROM orders WHERE cl_ord_id=?').get(clOrdId) as any;
+    return row ? rowToOrder(row) : undefined;
+  }
+
+  updateOrderStatus(clOrdId: string, patch: { status: OrderStatus; filledQty?: number }): OrderRecord {
+    const existing = this.getOrder(clOrdId);
+    if (!existing) throw new Error(`Order ${clOrdId} not found`);
+    const filledQty = patch.filledQty ?? existing.filledQty;
+    this.db.prepare('UPDATE orders SET status=?, filled_qty=? WHERE cl_ord_id=?').run(patch.status, filledQty, clOrdId);
+    return { ...existing, status: patch.status, filledQty };
+  }
+
+  deleteAllOrders(): void {
+    this.db.prepare('DELETE FROM orders').run();
+  }
+
   private rowToVenue(row: any): Venue {
     const accountRows = this.db.prepare(
       'SELECT account_config_id FROM venue_accounts WHERE venue_id=? ORDER BY rowid'
@@ -273,5 +331,20 @@ function rowToAccountConfig(row: any): AccountConfig {
     id: row.id,
     account: row.account,
     ...(row.display_alias != null && { displayAlias: row.display_alias }),
+  };
+}
+
+function rowToOrder(row: any): OrderRecord {
+  return {
+    clOrdId: row.cl_ord_id,
+    venueId: row.venue_id,
+    symbol: row.symbol,
+    side: row.side as 'buy' | 'sell',
+    price: row.price,
+    quantity: row.quantity,
+    account: row.account,
+    traderId: row.trader_id,
+    status: row.status as OrderStatus,
+    filledQty: row.filled_qty,
   };
 }

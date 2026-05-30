@@ -3,7 +3,10 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
-    "composite": true
+    "composite": true,
+    "paths": {
+      "@ancontrade/shared": ["../shared/src/index.ts"]
+    }
   },
   "references": [
     { "path": "../shared" }
