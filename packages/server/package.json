@@ -1,0 +1,21 @@
+{
+  "name": "@ancontrade/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@ancontrade/shared": "*",
+    "@fixenginelib/core": "file:../../../fixserver/packages/core",
+    "@matchingengine/engine": "file:../../../matchingengine/packages/engine",
+    "@matchingengine/gateway": "file:../../../matchingengine/packages/gateway",
+    "@matchingengine/shared-types": "file:../../../matchingengine/packages/shared-types",
+    "fastify": "^5.0.0"
+  }
+}
