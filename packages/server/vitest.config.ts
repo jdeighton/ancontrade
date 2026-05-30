@@ -8,6 +8,18 @@ const matchingEngineRoot = resolve(root, '../../matchingengine');
 const fixserverRoot = resolve(root, '../../fixserver');
 
 export default defineConfig({
+  plugins: [
+    {
+      // node:sqlite appears in builtinModules only with the 'node:' prefix, not as bare
+      // 'sqlite'. Vite 5 strips 'node:' before checking the list, so it fails to
+      // recognise it as a built-in. Mark it external here before Vite's resolver runs.
+      name: 'externalize-node-sqlite',
+      enforce: 'pre',
+      resolveId(id) {
+        if (id === 'node:sqlite') return { id, external: true };
+      },
+    },
+  ],
   resolve: {
     alias: {
       '@ancontrade/shared': resolve(root, 'packages/shared/src/index.ts'),
