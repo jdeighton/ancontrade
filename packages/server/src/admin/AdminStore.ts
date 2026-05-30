@@ -296,6 +296,10 @@ export class AdminStore {
     this.db.prepare('DELETE FROM orders').run();
   }
 
+  close(): void {
+    this.db.close();
+  }
+
   private rowToVenue(row: any): Venue {
     const accountRows = this.db.prepare(
       'SELECT account_config_id FROM venue_accounts WHERE venue_id=? ORDER BY rowid'

@@ -101,4 +101,11 @@ export function registerAdminRoutes(app: FastifyInstance, store: AdminStore): vo
     store.deleteVenue(id);
     reply.code(204);
   });
+
+  // ─── Orders ────────────────────────────────────────────────────────────────
+
+  app.post('/admin/orders/reset', async (_req, reply) => {
+    store.deleteAllOrders();
+    reply.code(204);
+  });
 }

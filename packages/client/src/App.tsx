@@ -91,6 +91,12 @@ export function App() {
     await fetch(`/venues/${selectedVenueId}/disconnect`, { method: 'POST' });
   }
 
+  async function handleResetHistory() {
+    if (!window.confirm('Reset all order history? This cannot be undone.')) return;
+    await fetch('/admin/orders/reset', { method: 'POST' });
+    setOrders([]);
+  }
+
   const orConnected = venueStatus?.venueId === selectedVenueId && venueStatus.orConnected;
   const openStatuses = new Set(['PendingNew', 'New', 'PartiallyFilled']);
   const hasOpenOrders = orders.some(o => openStatuses.has(o.status));
@@ -149,7 +155,14 @@ export function App() {
             traderId={venueTraderId}
             onSubmitted={refreshOrders}
           />
-          <OrderBlotter orders={orders} />
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+              <button onClick={handleResetHistory} style={{ fontSize: 12, color: '#c0392b' }}>
+                Reset History
+              </button>
+            </div>
+            <OrderBlotter orders={orders} />
+          </div>
         </div>
       )}
     </div>

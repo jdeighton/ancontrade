@@ -42,6 +42,8 @@ export function buildServer(dbPath = ':memory:', engine?: IFIXEngine) {
     socket.on('close', () => { unsubVenue(); unsubOrder(); });
   });
 
+  app.addHook('onClose', () => adminStore.close());
+
   registerAdminRoutes(app, adminStore);
   registerVenueRoutes(app, venueManager);
   registerOrderRoutes(app, orderManager, adminStore);
