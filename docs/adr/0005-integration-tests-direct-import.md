@@ -1,0 +1,3 @@
+# Integration tests import the matching engine directly, not via subprocess
+
+Integration tests instantiate the matching engine's Engine and Gateway as in-process objects (via file-path npm dependency) rather than starting it as a child process over a network port. This gives precise control over startup, teardown, and state between test suites — critical for a testing tool where each suite needs to know it is the only market participant. The matching engine was designed to be embeddable (no required main entry point). If per-suite startup cost becomes a problem, the matching engine can add a state-clearing API as an alternative to full teardown and re-instantiation.

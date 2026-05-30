@@ -1,0 +1,3 @@
+# SQLite stores permanent order history, not session-scoped state
+
+Order and execution state persists across server restarts — all orders from all sessions accumulate in the SQLite database rather than being cleared on each startup or Venue connect. A reset operation is available in the admin panel for clearing before a new test run. The permanent history default matches the spec's framing of "queryable order history" and preserves audit trails across runs. Session-scoped clearing was the alternative, but it would lose the ability to compare results across runs and makes the reset choice irreversible rather than deliberate.
