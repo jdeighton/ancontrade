@@ -26,7 +26,7 @@ interface Subscription {
   tickSize: number;
 }
 
-const DEFAULT_DEPTH = 5;
+const DEFAULT_DEPTH = 20;
 
 export class MarketDataManager {
   private readonly subscriptions = new Map<string, Subscription>(); // symbol → sub
