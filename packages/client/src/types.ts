@@ -74,3 +74,15 @@ export interface FIXLogEntry {
   session: string;
   fields: Record<string, string>;
 }
+
+export interface PriceLevel {
+  price: number;
+  volume: number;
+  count: number;
+}
+
+export interface PriceLevelsEvent {
+  symbol: string;
+  bids: PriceLevel[];
+  asks: PriceLevel[];
+}

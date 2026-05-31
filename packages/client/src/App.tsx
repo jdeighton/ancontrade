@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AccountConfig, CancelRejectEvent, Instrument, OrderRecord, TraderIdConfig, Venue, VenueStatus } from './types.js';
+import type { AccountConfig, CancelRejectEvent, Instrument, OrderRecord, PriceLevelsEvent, TraderIdConfig, Venue, VenueStatus } from './types.js';
 import { OrderTicket } from './OrderTicket.js';
 import { OrderBlotter } from './OrderBlotter.js';
 import { OrderEventsPanel } from './OrderEventsPanel.js';
+import { PriceLadder } from './PriceLadder.js';
 
 async function apiFetch<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -34,8 +35,10 @@ export function App() {
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const [cancelReject, setCancelReject] = useState<CancelRejectEvent | null>(null);
   const [selectedClOrdId, setSelectedClOrdId] = useState<string | null>(null);
+  const [priceLevels, setPriceLevels] = useState<PriceLevelsEvent | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
   const wsRef = useRef<WebSocket | null>(null);
+  const subscribedSymbolRef = useRef<string | null>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -81,6 +84,8 @@ export function App() {
         });
       } else if (msg.type === 'cancel-reject') {
         setCancelReject(msg.payload as CancelRejectEvent);
+      } else if (msg.type === 'price-levels') {
+        setPriceLevels(msg.payload as PriceLevelsEvent);
       }
     };
     wsRef.current = ws;
@@ -112,8 +117,25 @@ export function App() {
 
   async function handleDisconnect() {
     if (!selectedVenueId) return;
+    if (subscribedSymbolRef.current) {
+      const sym = encodeURIComponent(subscribedSymbolRef.current);
+      await fetch(`/venues/${selectedVenueId}/instruments/${sym}/unsubscribe`, { method: 'POST' });
+      subscribedSymbolRef.current = null;
+      setPriceLevels(null);
+    }
     await fetch(`/venues/${selectedVenueId}/disconnect`, { method: 'POST' });
   }
+
+  const subscribeToSymbol = useCallback(async (venueId: string, symbol: string) => {
+    if (subscribedSymbolRef.current === symbol) return;
+    if (subscribedSymbolRef.current) {
+      const prev = encodeURIComponent(subscribedSymbolRef.current);
+      await fetch(`/venues/${venueId}/instruments/${prev}/unsubscribe`, { method: 'POST' }).catch(() => {});
+    }
+    subscribedSymbolRef.current = symbol;
+    setPriceLevels(null);
+    await fetch(`/venues/${venueId}/instruments/${encodeURIComponent(symbol)}/subscribe`, { method: 'POST' }).catch(console.error);
+  }, []);
 
   async function handleResetHistory() {
     if (!window.confirm('Reset all order history? This cannot be undone.')) return;
@@ -126,6 +148,13 @@ export function App() {
   }
 
   const orConnected = venueStatus?.venueId === selectedVenueId && venueStatus.orConnected;
+  const mdConnected = venueStatus?.venueId === selectedVenueId && venueStatus.mdConnected;
+
+  useEffect(() => {
+    if (mdConnected && selectedVenueId && selectedSymbol) {
+      subscribeToSymbol(selectedVenueId, selectedSymbol);
+    }
+  }, [mdConnected, selectedVenueId, selectedSymbol, subscribeToSymbol]);
   const openStatuses = new Set(['PendingNew', 'New', 'PartiallyFilled']);
   const hasOpenOrders = orders.some(o => openStatuses.has(o.status));
 
@@ -214,6 +243,7 @@ export function App() {
             traderId={venueTraderId}
             onSubmitted={refreshOrders}
           />
+          <PriceLadder data={priceLevels?.symbol === selectedSymbol ? priceLevels : null} />
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
               <button onClick={handleResetHistory} style={{ fontSize: 12, color: 'var(--error)' }}>

@@ -2,10 +2,17 @@ import type { IFIXEngine, IFIXSession } from '../venue/VenueManager.js';
 import type { FIXMessageLog } from './FIXMessageLog.js';
 
 export class LoggingFIXEngine implements IFIXEngine {
+  private readonly subscribers = new Set<(sessionId: string, raw: string) => void>();
+
   constructor(
     private readonly inner: IFIXEngine,
     private readonly log: FIXMessageLog,
-  ) {}
+  ) {
+    inner.onMessage((sessionId, raw) => {
+      log.logInbound(sessionId, raw);
+      for (const cb of this.subscribers) cb(sessionId, raw);
+    });
+  }
 
   addSession(config: Parameters<IFIXEngine['addSession']>[0]): IFIXSession {
     return this.inner.addSession(config);
@@ -21,9 +28,7 @@ export class LoggingFIXEngine implements IFIXEngine {
   }
 
   onMessage(cb: (sessionId: string, raw: string) => void): () => void {
-    return this.inner.onMessage((sessionId, raw) => {
-      this.log.logInbound(sessionId, raw);
-      cb(sessionId, raw);
-    });
+    this.subscribers.add(cb);
+    return () => this.subscribers.delete(cb);
   }
 }

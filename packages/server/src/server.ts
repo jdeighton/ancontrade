@@ -10,6 +10,7 @@ import { registerOrderRoutes } from './orders/orderRoutes.js';
 import { registerInstrumentRoutes } from './instruments/instrumentRoutes.js';
 import { FIXMessageLog } from './fix/FIXMessageLog.js';
 import { LoggingFIXEngine } from './fix/LoggingFIXEngine.js';
+import { MarketDataManager } from './marketdata/MarketDataManager.js';
 
 export function buildServer(dbPath = ':memory:', engine?: IFIXEngine, logDir: string | null = null) {
   const app = Fastify({ logger: false });
@@ -27,12 +28,13 @@ export function buildServer(dbPath = ':memory:', engine?: IFIXEngine, logDir: st
     venueManager,
     adminStore,
   );
+  const mdManager = loggingEngine ? new MarketDataManager(loggingEngine) : null;
 
   app.get('/health', async () => {
     return { status: 'ok' };
   });
 
-  // WebSocket push: venue status + order updates + cancel rejects
+  // WebSocket push: venue status + order updates + cancel rejects + price levels
   app.get('/ws', { websocket: true }, (socket) => {
     const unsubVenue = venueManager.onStatusChange((status) => {
       socket.send(JSON.stringify({ type: 'venue-status', payload: status }));
@@ -43,7 +45,10 @@ export function buildServer(dbPath = ':memory:', engine?: IFIXEngine, logDir: st
     const unsubCancelReject = orderManager.onCancelReject((event) => {
       socket.send(JSON.stringify({ type: 'cancel-reject', payload: event }));
     });
-    socket.on('close', () => { unsubVenue(); unsubOrder(); unsubCancelReject(); });
+    const unsubPriceLevels = mdManager?.onPriceLevels((event) => {
+      socket.send(JSON.stringify({ type: 'price-levels', payload: event }));
+    });
+    socket.on('close', () => { unsubVenue(); unsubOrder(); unsubCancelReject(); unsubPriceLevels?.(); });
   });
 
   app.addHook('onClose', () => adminStore.close());
@@ -51,7 +56,7 @@ export function buildServer(dbPath = ':memory:', engine?: IFIXEngine, logDir: st
   registerAdminRoutes(app, adminStore);
   registerVenueRoutes(app, venueManager);
   registerOrderRoutes(app, orderManager, adminStore, fixLog);
-  registerInstrumentRoutes(app, venueManager);
+  registerInstrumentRoutes(app, venueManager, mdManager);
 
   return app;
 }

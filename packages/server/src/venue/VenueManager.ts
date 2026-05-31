@@ -40,6 +40,7 @@ export class VenueManager {
   private readonly active = new Map<string, VenueSessionPair>();
   private readonly listeners = new Set<(s: VenueStatus) => void>();
   private readonly orListeners = new Set<(venueId: string, raw: string) => void>();
+  private readonly mdListeners = new Set<(venueId: string, sessionId: string, raw: string) => void>();
   private readonly instruments = new Map<string, Instrument[]>();
 
   constructor(
@@ -113,6 +114,15 @@ export class VenueManager {
     return () => this.orListeners.delete(callback);
   }
 
+  onMDMessage(callback: (venueId: string, sessionId: string, raw: string) => void): () => void {
+    this.mdListeners.add(callback);
+    return () => this.mdListeners.delete(callback);
+  }
+
+  getMDSessionId(venueId: string): string | null {
+    return this.active.get(venueId)?.mdSession.id ?? null;
+  }
+
   private handleMessage(sessionId: string, raw: string): void {
     for (const [venueId, pair] of this.active) {
       if (pair.mdSession.id === sessionId) {
@@ -120,6 +130,7 @@ export class VenueManager {
         if (msgType === 'y') {
           this.instruments.set(venueId, parseSecurityListRaw(raw));
         }
+        for (const cb of this.mdListeners) cb(venueId, sessionId, raw);
         return;
       }
       if (pair.orSession.id === sessionId) {
