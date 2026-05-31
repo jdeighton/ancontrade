@@ -161,6 +161,7 @@ describe('AdminStore — Orders', () => {
     venueId: 'venue-1',
     symbol: 'EUR/USD',
     side: 'buy' as const,
+    orderType: 'limit' as const,
     price: 1.105,
     quantity: 1000,
     account: 'ACC001',
@@ -169,12 +170,13 @@ describe('AdminStore — Orders', () => {
 
   it('createOrder stores order with PendingNew status', () => {
     const rec = store.createOrder(baseOrder);
-    expect(rec).toEqual({ ...baseOrder, status: 'PendingNew', filledQty: 0 });
+    expect(rec).toMatchObject({ ...baseOrder, status: 'PendingNew', filledQty: 0 });
+    expect(rec.entryTime).toBeDefined();
   });
 
   it('getOrder returns the stored order', () => {
     store.createOrder(baseOrder);
-    expect(store.getOrder(baseOrder.clOrdId)).toEqual({ ...baseOrder, status: 'PendingNew', filledQty: 0 });
+    expect(store.getOrder(baseOrder.clOrdId)).toMatchObject({ ...baseOrder, status: 'PendingNew', filledQty: 0 });
   });
 
   it('listOrders returns all orders in insertion order', () => {

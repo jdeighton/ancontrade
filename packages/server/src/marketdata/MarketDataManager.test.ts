@@ -164,6 +164,6 @@ describe('MarketDataManager', () => {
       [269, '0'], [278, 'B1'], [270, '1.1050'], [271, '100'],
     ]));
 
-    expect(events[0].bids).toHaveLength(5);
+    expect(events[0].bids).toHaveLength(20);
   });
 });

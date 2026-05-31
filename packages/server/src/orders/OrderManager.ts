@@ -1,5 +1,6 @@
 import { ClientOrderIdGenerator } from '@ancontrade/shared';
 import type { AdminStore, OrderRecord } from '../admin/AdminStore.js';
+import type { FIXMessageLog } from '../fix/FIXMessageLog.js';
 import type { VenueManager } from '../venue/VenueManager.js';
 import { buildNewOrderSingle, type NewOrderParams } from './buildNewOrderSingle.js';
 import { buildOrderCancelRequest } from './buildOrderCancelRequest.js';
@@ -26,6 +27,7 @@ export class OrderManager {
     private readonly idGen: ClientOrderIdGenerator,
     private readonly venueManager: VenueManager,
     private readonly store: AdminStore,
+    private readonly fixLog?: FIXMessageLog,
   ) {
     venueManager.onORMessage((_venueId, raw) => this.handleIncoming(raw));
   }
@@ -75,9 +77,22 @@ export class OrderManager {
   handleExecutionReport(raw: string): void {
     const er = parseExecutionReport(raw);
     if (!er) return;
-    const existing = this.store.getOrder(er.clOrdId);
-    if (!existing) return;
-    const updated = this.store.updateOrderStatus(er.clOrdId, {
+
+    // When tag 37 is present, prefer the order that already owns that ExchOrdID.
+    // This handles self-match: the engine echoes the aggressor's tag 11 onto both
+    // fill EPs, but tag 37 uniquely identifies which order each fill belongs to.
+    // If no order owns tag 37 yet (New ack path), fall back to tag 11.
+    const byExch = er.exchOrdId ? this.store.getOrderByExchOrdId(er.exchOrdId) : undefined;
+    const order = byExch ?? this.store.getOrder(er.clOrdId);
+
+    // When routed via ExchOrdID to a different order than tag 11, the log indexed
+    // this message under the wrong ClOrdID. Move it to the correct one.
+    if (byExch && byExch.clOrdId !== er.clOrdId) {
+      this.fixLog?.reindexLatestInbound(er.clOrdId, byExch.clOrdId);
+    }
+
+    if (!order) return;
+    const updated = this.store.updateOrderStatus(order.clOrdId, {
       status: er.ordStatus,
       filledQty: er.cumQty,
       exchOrdId: er.exchOrdId || undefined,

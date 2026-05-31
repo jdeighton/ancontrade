@@ -95,7 +95,7 @@ describe('POST /orders', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/orders',
-      body: { venueId, symbol: 'EUR/USD', side: 'buy', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' },
+      body: { venueId, symbol: 'EUR/USD', side: 'buy', orderType: 'limit', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' },
     });
     const { clOrdId } = res.json();
     expect(engine.sent).toHaveLength(1);
@@ -125,7 +125,7 @@ describe('POST /orders', () => {
 describe('GET /orders', () => {
   it('returns empty array initially', async () => {
     const engine = new StubFIXEngine();
-    const app = buildServer(':memory:', engine);
+    const app = await buildServer(':memory:', engine);
     const res = await app.inject({ method: 'GET', url: '/orders' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual([]);

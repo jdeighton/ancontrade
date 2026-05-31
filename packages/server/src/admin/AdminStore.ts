@@ -280,7 +280,7 @@ export class AdminStore {
 
   createOrder(data: Omit<OrderRecord, 'status' | 'filledQty' | 'entryTime' | 'lastUpdated'>): OrderRecord {
     const entryTime = new Date().toISOString();
-    const record: OrderRecord = { ...data, status: 'PendingNew', filledQty: 0, entryTime };
+    const record: OrderRecord = { ...data, status: 'PendingNew', filledQty: 0, entryTime, orderType: data.orderType ?? 'limit' };
     this.db.prepare(
       'INSERT INTO orders (cl_ord_id, venue_id, symbol, side, price, quantity, account, trader_id, status, filled_qty, order_type, entry_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(record.clOrdId, record.venueId, record.symbol, record.side, record.price, record.quantity, record.account, record.traderId, record.status, record.filledQty, record.orderType, entryTime);
@@ -293,6 +293,11 @@ export class AdminStore {
 
   getOrder(clOrdId: string): OrderRecord | undefined {
     const row = this.db.prepare('SELECT * FROM orders WHERE cl_ord_id=?').get(clOrdId) as any;
+    return row ? rowToOrder(row) : undefined;
+  }
+
+  getOrderByExchOrdId(exchOrdId: string): OrderRecord | undefined {
+    const row = this.db.prepare('SELECT * FROM orders WHERE exch_ord_id=?').get(exchOrdId) as any;
     return row ? rowToOrder(row) : undefined;
   }
 

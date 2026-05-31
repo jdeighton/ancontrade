@@ -27,6 +27,7 @@ export async function buildServer(dbPath = ':memory:', engine?: IFIXEngine, logD
     new ClientOrderIdGenerator(new Date()),
     venueManager,
     adminStore,
+    fixLog,
   );
   const mdManager = loggingEngine ? new MarketDataManager(loggingEngine) : null;
 

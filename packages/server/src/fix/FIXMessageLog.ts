@@ -50,11 +50,28 @@ export class FIXMessageLog {
     };
     this.index(entry, parsed['11']);
     if (parsed['41']) this.index(entry, parsed['41']);
+    if (parsed['37']) this.index(entry, parsed['37']);
     this.write(entry);
   }
 
-  getEntriesForClOrdId(clOrdId: string): FIXLogEntry[] {
-    return this.byClOrdId.get(clOrdId) ?? [];
+  getEntriesForClOrdId(clOrdId: string, exchOrdId?: string): FIXLogEntry[] {
+    const byId = this.byClOrdId.get(clOrdId) ?? [];
+    if (!exchOrdId) return byId;
+    const byExch = this.byClOrdId.get(exchOrdId) ?? [];
+    if (byExch.length === 0) return byId;
+    const seen = new Set<FIXLogEntry>(byId);
+    const merged = [...byId, ...byExch.filter(e => !seen.has(e))];
+    return merged.sort((a, b) => a.ts.localeCompare(b.ts));
+  }
+
+  reindexLatestInbound(fromClOrdId: string, toClOrdId: string): void {
+    const fromList = this.byClOrdId.get(fromClOrdId);
+    if (!fromList || fromList.length === 0) return;
+    const entry = fromList[fromList.length - 1];
+    if (entry.dir !== 'IN') return;
+    fromList.pop();
+    if (fromList.length === 0) this.byClOrdId.delete(fromClOrdId);
+    this.index(entry, toClOrdId);
   }
 
   private index(entry: FIXLogEntry, clOrdId: string | undefined): void {

@@ -31,7 +31,8 @@ export function registerOrderRoutes(app: FastifyInstance, orderManager: OrderMan
 
   app.get('/orders/:clOrdId/events', async (req) => {
     const { clOrdId } = req.params as { clOrdId: string };
-    return fixLog.getEntriesForClOrdId(clOrdId);
+    const exchOrdId = store.getOrder(clOrdId)?.exchOrdId;
+    return fixLog.getEntriesForClOrdId(clOrdId, exchOrdId);
   });
 
   app.delete('/orders/:clOrdId', async (req, reply) => {

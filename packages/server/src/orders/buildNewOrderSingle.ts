@@ -34,7 +34,7 @@ export function buildNewOrderSingle(clOrdId: string, params: NewOrderParams): Ma
     [1, params.account],
     [50, params.traderId],
   ]);
-  if (params.orderType === 'limit' && params.price !== undefined) {
+  if (params.orderType !== 'market' && params.price !== undefined) {
     fields.set(44, String(params.price));
   }
   return fields;

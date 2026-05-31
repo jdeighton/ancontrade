@@ -56,6 +56,40 @@ describe('FIXMessageLog — in-memory indexing', () => {
     expect(log.getEntriesForClOrdId('CID1')).toHaveLength(1);
   });
 
+  it('reindexLatestInbound moves the entry to the correct ClOrdID', () => {
+    const log = new FIXMessageLog(null);
+    log.logInbound('S', raw({ 35: '8', 11: 'SELL-1', 37: 'E-SELL', 39: '0', 14: '0', 6: '0' }));
+    // passive fill arrives with wrong tag 11
+    log.logInbound('S', raw({ 35: '8', 11: 'BUY-1', 37: 'E-SELL', 39: '2', 14: '1000', 6: '1.105' }));
+
+    // Before reindex: fill is under BUY-1
+    expect(log.getEntriesForClOrdId('BUY-1')).toHaveLength(1);
+    expect(log.getEntriesForClOrdId('SELL-1')).toHaveLength(1);
+
+    log.reindexLatestInbound('BUY-1', 'SELL-1');
+
+    // After reindex: fill moved to SELL-1, BUY-1 is empty
+    expect(log.getEntriesForClOrdId('BUY-1')).toHaveLength(0);
+    expect(log.getEntriesForClOrdId('SELL-1')).toHaveLength(2);
+  });
+
+  it('logInbound indexes by tag 37 (ExchOrdID) enabling self-match event lookup', () => {
+    const log = new FIXMessageLog(null);
+    // New ack for passive order — indexed under SELL-1 and E-SELL
+    log.logInbound('S', raw({ 35: '8', 11: 'SELL-1', 37: 'E-SELL', 39: '0', 14: '0', 6: '0' }));
+    // Fill EP with aggressor tag 11, but passive ExchOrdID in tag 37
+    log.logInbound('S', raw({ 35: '8', 11: 'BUY-1', 37: 'E-SELL', 39: '2', 14: '1000', 6: '1.105' }));
+
+    // Without exchOrdId hint: SELL-1 only sees its own New ack
+    expect(log.getEntriesForClOrdId('SELL-1')).toHaveLength(1);
+    // With exchOrdId hint: SELL-1 also gets the fill EP
+    const events = log.getEntriesForClOrdId('SELL-1', 'E-SELL');
+    expect(events).toHaveLength(2);
+    expect(events.map(e => e.fields['39'])).toEqual(expect.arrayContaining(['0', '2']));
+    // No duplicates
+    expect(new Set(events).size).toBe(2);
+  });
+
   it('returns empty array for unknown clOrdId', () => {
     const log = new FIXMessageLog(null);
     expect(log.getEntriesForClOrdId('UNKNOWN')).toEqual([]);

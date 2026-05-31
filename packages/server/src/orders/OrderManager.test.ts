@@ -136,6 +136,28 @@ describe('OrderManager — execution report state machine', () => {
   });
 });
 
+describe('OrderManager — self-match fill routing', () => {
+  it('routes fill ER to the passive order when tag 37 differs from the aggressor exchOrdId', () => {
+    const { store, engine, orSessionId, venue } = makeSetup();
+
+    store.createOrder({
+      clOrdId: 'SELL-1', venueId: venue.id, symbol: 'EUR/USD',
+      side: 'sell', price: 1.1050, quantity: 1000, account: 'ACC001', traderId: 'TRD1',
+    });
+
+    // New acks with distinct ExchOrdIDs
+    engine.triggerIncoming(orSessionId, erRaw({ 35: '8', 11: 'CID1',   37: 'E-BUY',  39: '0', 14: '0', 6: '0' }));
+    engine.triggerIncoming(orSessionId, erRaw({ 35: '8', 11: 'SELL-1', 37: 'E-SELL', 39: '0', 14: '0', 6: '0' }));
+
+    // Both fill EPs carry the aggressor's ClOrdID in tag 11; tag 37 identifies the true owner
+    engine.triggerIncoming(orSessionId, erRaw({ 35: '8', 11: 'CID1', 37: 'E-BUY',  39: '2', 14: '1000', 6: '1.1050' }));
+    engine.triggerIncoming(orSessionId, erRaw({ 35: '8', 11: 'CID1', 37: 'E-SELL', 39: '2', 14: '1000', 6: '1.1050' }));
+
+    expect(store.getOrder('CID1')!.status).toBe('Filled');
+    expect(store.getOrder('SELL-1')!.status).toBe('Filled');
+  });
+});
+
 describe('OrderManager — cancel workflow', () => {
   let store: AdminStore;
   let engine: StubFIXEngine;
