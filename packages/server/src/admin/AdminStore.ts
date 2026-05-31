@@ -51,6 +51,8 @@ export interface OrderRecord {
   filledQty: number;
   exchOrdId?: string;
   avgFillPrice?: number;
+  ordRejReason?: number;
+  rejText?: string;
 }
 
 export class AdminStore {
@@ -105,9 +107,14 @@ export class AdminStore {
         status TEXT NOT NULL,
         filled_qty REAL NOT NULL DEFAULT 0,
         exch_ord_id TEXT,
-        avg_fill_price REAL
+        avg_fill_price REAL,
+        ord_rej_reason INTEGER,
+        rej_text TEXT
       );
     `);
+    // Migration: add new columns to existing file-backed DBs (silently ignored for fresh DBs)
+    try { this.db.exec('ALTER TABLE orders ADD COLUMN ord_rej_reason INTEGER'); } catch {}
+    try { this.db.exec('ALTER TABLE orders ADD COLUMN rej_text TEXT'); } catch {}
   }
 
   // ─── Session Configs ──────────────────────────────────────────────────────
@@ -282,14 +289,21 @@ export class AdminStore {
     return row ? rowToOrder(row) : undefined;
   }
 
-  updateOrderStatus(clOrdId: string, patch: { status: OrderStatus; filledQty?: number; exchOrdId?: string; avgFillPrice?: number }): OrderRecord {
+  updateOrderStatus(clOrdId: string, patch: { status: OrderStatus; filledQty?: number; exchOrdId?: string; avgFillPrice?: number; ordRejReason?: number; rejText?: string }): OrderRecord {
     const existing = this.getOrder(clOrdId);
     if (!existing) throw new Error(`Order ${clOrdId} not found`);
     const filledQty = patch.filledQty ?? existing.filledQty;
     const exchOrdId = patch.exchOrdId ?? existing.exchOrdId ?? null;
     const avgFillPrice = patch.avgFillPrice ?? existing.avgFillPrice ?? null;
-    this.db.prepare('UPDATE orders SET status=?, filled_qty=?, exch_ord_id=?, avg_fill_price=? WHERE cl_ord_id=?').run(patch.status, filledQty, exchOrdId, avgFillPrice, clOrdId);
-    return { ...existing, status: patch.status, filledQty, exchOrdId: exchOrdId ?? undefined, avgFillPrice: avgFillPrice ?? undefined };
+    const ordRejReason = patch.ordRejReason ?? existing.ordRejReason ?? null;
+    const rejText = patch.rejText ?? existing.rejText ?? null;
+    this.db.prepare('UPDATE orders SET status=?, filled_qty=?, exch_ord_id=?, avg_fill_price=?, ord_rej_reason=?, rej_text=? WHERE cl_ord_id=?')
+      .run(patch.status, filledQty, exchOrdId, avgFillPrice, ordRejReason, rejText, clOrdId);
+    return {
+      ...existing, status: patch.status, filledQty,
+      exchOrdId: exchOrdId ?? undefined, avgFillPrice: avgFillPrice ?? undefined,
+      ordRejReason: ordRejReason ?? undefined, rejText: rejText ?? undefined,
+    };
   }
 
   deleteAllOrders(): void {
@@ -356,7 +370,9 @@ function rowToOrder(row: any): OrderRecord {
     traderId: row.trader_id,
     status: row.status as OrderStatus,
     filledQty: row.filled_qty,
-    ...(row.exch_ord_id  != null && { exchOrdId: row.exch_ord_id }),
+    ...(row.exch_ord_id    != null && { exchOrdId: row.exch_ord_id }),
     ...(row.avg_fill_price != null && { avgFillPrice: row.avg_fill_price }),
+    ...(row.ord_rej_reason != null && { ordRejReason: row.ord_rej_reason }),
+    ...(row.rej_text       != null && { rejText: row.rej_text }),
   };
 }

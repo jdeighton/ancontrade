@@ -43,6 +43,8 @@ export interface OrderRecord {
   filledQty: number;
   exchOrdId?: string;
   avgFillPrice?: number;
+  ordRejReason?: number;
+  rejText?: string;
 }
 
 export interface CancelRejectEvent {

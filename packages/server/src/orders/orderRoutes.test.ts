@@ -183,6 +183,31 @@ describe('Execution report sequence — PendingNew → New → PartiallyFilled �
   });
 });
 
+describe('Order rejection — 35=8 OrdStatus=8', () => {
+  const SOH = '\x01';
+  const fix = (fields: Record<number, string>) =>
+    Object.entries(fields).map(([t, v]) => `${t}=${v}`).join(SOH);
+
+  it('blotter row transitions to Rejected and stores reason', async () => {
+    const { app, engine, venueId } = await makeConnectedServer();
+
+    const postRes = await app.inject({
+      method: 'POST', url: '/orders',
+      body: { venueId, symbol: 'EUR/USD', side: 'buy', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' },
+    });
+    const { clOrdId } = postRes.json();
+    const orSessionId = 'CLI-OR_EXCH-FIX.4.4';
+
+    engine.triggerIncoming(orSessionId, fix({ 35: '8', 11: clOrdId, 37: 'X', 39: '8', 14: '0', 6: '0', 103: '1', 58: 'Unknown symbol' }));
+
+    const res = await app.inject({ method: 'GET', url: '/orders' });
+    const [order] = res.json();
+    expect(order.status).toBe('Rejected');
+    expect(order.ordRejReason).toBe(1);
+    expect(order.rejText).toBe('Unknown symbol');
+  });
+});
+
 describe('DELETE /orders/:clOrdId — cancel workflow', () => {
   const SOH = '\x01';
   const fix = (fields: Record<number, string>) =>

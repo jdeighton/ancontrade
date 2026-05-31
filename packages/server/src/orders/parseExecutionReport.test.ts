@@ -52,4 +52,22 @@ describe('parseExecutionReport', () => {
   it('returns null when ClOrdID is missing', () => {
     expect(parseExecutionReport(raw({ 35: '8', 37: 'X', 39: '0', 14: '0', 6: '0' }))).toBeNull();
   });
+
+  it('maps OrdStatus 8 → Rejected', () => {
+    const r = raw({ 35: '8', 11: 'CID1', 37: 'X', 39: '8', 14: '0', 6: '0' });
+    expect(parseExecutionReport(r)?.ordStatus).toBe('Rejected');
+  });
+
+  it('parses OrdRejReason (tag 103) on Rejected ER', () => {
+    const r = raw({ 35: '8', 11: 'CID1', 37: 'X', 39: '8', 14: '0', 6: '0', 103: '1', 58: 'Unknown symbol' });
+    const result = parseExecutionReport(r);
+    expect(result?.ordRejReason).toBe(1);
+    expect(result?.rejText).toBe('Unknown symbol');
+  });
+
+  it('defaults ordRejReason and rejText to undefined when absent', () => {
+    const result = parseExecutionReport(raw({ 35: '8', 11: 'CID1', 37: 'X', 39: '0', 14: '0', 6: '0' }));
+    expect(result?.ordRejReason).toBeUndefined();
+    expect(result?.rejText).toBeUndefined();
+  });
 });

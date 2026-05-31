@@ -6,6 +6,8 @@ export interface ParsedER {
   ordStatus: OrderStatus;
   cumQty: number;
   avgPx: number;
+  ordRejReason?: number;
+  rejText?: string;
 }
 
 const ORD_STATUS_MAP: Record<string, OrderStatus> = {
@@ -33,5 +35,13 @@ export function parseExecutionReport(raw: string): ParsedER | null {
   if (!ordStatus) return null;
   const cumQty = Number(extractField(raw, 14) ?? '0');
   const avgPx  = Number(extractField(raw, 6)  ?? '0');
-  return { clOrdId, exchOrdId, ordStatus, cumQty, avgPx };
+
+  const rejReasonRaw = extractField(raw, 103);
+  const rejText = extractField(raw, 58);
+
+  return {
+    clOrdId, exchOrdId, ordStatus, cumQty, avgPx,
+    ordRejReason: rejReasonRaw !== undefined ? Number(rejReasonRaw) : undefined,
+    rejText,
+  };
 }

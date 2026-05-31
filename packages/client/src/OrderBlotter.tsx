@@ -7,6 +7,12 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 const CANCELLABLE = new Set(['New', 'PartiallyFilled']);
 
+const ORD_REJ_REASONS: Record<number, string> = {
+  0: 'Other', 1: 'Unknown symbol', 2: 'Exchange closed',
+  3: 'Order exceeds limit', 4: 'Too late to enter', 5: 'Unknown order',
+  6: 'Duplicate order', 8: 'Invalid investor ID', 13: 'Trading halt', 99: 'Other',
+};
+
 interface Props {
   orders: OrderRecord[];
   onCancelRequest: (clOrdId: string) => void;
@@ -31,6 +37,16 @@ export function OrderBlotter({ orders, onCancelRequest }: Props) {
     { field: 'filledQty',                                       headerName: 'Filled',     flex: 1 },
     { valueGetter: (p: any) => p.data.avgFillPrice,            headerName: 'Avg Px',     flex: 1 },
     { valueGetter: (p: any) => p.data.exchOrdId ?? '',         headerName: 'Exch OrdID', flex: 2 },
+    {
+      valueGetter: (p: any) => {
+        const o: OrderRecord = p.data;
+        if (o.status !== 'Rejected') return '';
+        const label = o.ordRejReason !== undefined ? (ORD_REJ_REASONS[o.ordRejReason] ?? `Code ${o.ordRejReason}`) : '';
+        return o.rejText ? `${label}: ${o.rejText}` : label;
+      },
+      headerName: 'Rej Reason', flex: 2,
+      cellStyle: () => ({ color: '#c0392b', fontSize: 11 }),
+    },
     {
       headerName: '', width: 80, sortable: false, filter: false,
       cellRenderer: (p: any) => {
