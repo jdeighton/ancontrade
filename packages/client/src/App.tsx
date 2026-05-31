@@ -3,11 +3,11 @@ import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { FloatLabel } from 'primereact/floatlabel';
-import { InputSwitch } from 'primereact/inputswitch';
 import { Splitter, SplitterPanel } from 'primereact/splitter';
 import { Toolbar } from 'primereact/toolbar';
 import type { AccountConfig, CancelRejectEvent, Instrument, OrderRecord, PriceLevelsEvent, StatusAlertEvent, TraderIdConfig, Venue, VenueStatus } from './types.js';
 import type { BlotterFilter } from './OrderBlotter.js';
+import { SettingsDialog } from './SettingsDialog.js';
 import { OrderTicket } from './OrderTicket.js';
 import { OrderBlotter } from './OrderBlotter.js';
 import { OrderEventsPanel } from './OrderEventsPanel.js';
@@ -42,6 +42,11 @@ function getInitialTheme(): 'dark' | 'light' {
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
+function getInitialFontSize(): number {
+  const n = Number(localStorage.getItem('priceLadderFontSize'));
+  return n >= 10 && n <= 20 ? n : 13;
+}
+
 export function App() {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [accountConfigs, setAccountConfigs] = useState<AccountConfig[]>([]);
@@ -58,7 +63,9 @@ export function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
   const [subscribedSymbol, setSubscribedSymbol] = useState<string | null>(null);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [blotterFilter, setBlotterFilter] = useState<BlotterFilter>('All');
+  const [priceLadderFontSize, setPriceLadderFontSize] = useState<number>(getInitialFontSize);
   const [priceOverride, setPriceOverride] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const subscribedSymbolRef = useRef<string | null>(null);
@@ -68,6 +75,23 @@ export function App() {
     localStorage.setItem('theme', theme);
     applyPrimeTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('priceLadderFontSize', String(priceLadderFontSize));
+  }, [priceLadderFontSize]);
+
+  const refreshAdminData = useCallback(() => {
+    Promise.all([
+      apiFetch<Venue[]>('/admin/venues'),
+      apiFetch<AccountConfig[]>('/admin/account-configs'),
+      apiFetch<TraderIdConfig[]>('/admin/trader-id-configs'),
+    ]).then(([v, a, t]) => {
+      setVenues(v);
+      setAccountConfigs(a);
+      setTraderIdConfigs(t);
+      if (v.length > 0 && !selectedVenueId) setSelectedVenueId(v[0].id);
+    }).catch(console.error);
+  }, [selectedVenueId]);
 
   const refreshOrders = useCallback(() => {
     apiFetch<OrderRecord[]>('/orders').then(setOrders).catch(console.error);
@@ -281,16 +305,19 @@ export function App() {
         </p>
       </Dialog>
 
+      <SettingsDialog
+        visible={showSettings}
+        onHide={() => setShowSettings(false)}
+        theme={theme}
+        onThemeChange={setTheme}
+        priceLadderFontSize={priceLadderFontSize}
+        onFontSizeChange={setPriceLadderFontSize}
+        onDataChanged={refreshAdminData}
+      />
+
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>Ancontrade</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Dark</span>
-          <InputSwitch
-            checked={theme === 'light'}
-            onChange={e => setTheme(e.value ? 'light' : 'dark')}
-          />
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Light</span>
-        </div>
+        <Button icon="pi pi-cog" outlined aria-label="Settings" onClick={() => setShowSettings(true)} />
       </div>
 
       <StatusBar alerts={statusAlerts} />
@@ -375,6 +402,7 @@ export function App() {
                 <PriceLadder
                   data={priceLevels?.symbol === selectedSymbol ? priceLevels : null}
                   onPriceClick={setPriceOverride}
+                  fontSize={priceLadderFontSize}
                 />
               </SplitterPanel>
             </Splitter>

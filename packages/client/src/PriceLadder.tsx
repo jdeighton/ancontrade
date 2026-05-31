@@ -5,6 +5,7 @@ interface Props {
   data: PriceLevelsEvent | null;
   onDepthChange?: (depth: number) => void;
   onPriceClick?: (price: number) => void;
+  fontSize?: number;
 }
 
 const DEPTH_MIN = 1;
@@ -38,7 +39,7 @@ function LevelRow({ level, side, onPriceClick }: { level: PriceLevel; side: 'bid
   );
 }
 
-export function PriceLadder({ data, onDepthChange, onPriceClick }: Props) {
+export function PriceLadder({ data, onDepthChange, onPriceClick, fontSize = 13 }: Props) {
   const [depth, setDepth] = useState(DEPTH_DEFAULT);
 
   function handleDepthChange(n: number) {
@@ -78,7 +79,7 @@ export function PriceLadder({ data, onDepthChange, onPriceClick }: Props) {
       {!data ? (
         <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No market data — subscribe to an instrument.</div>
       ) : (
-        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize }}>
           <thead>
             <tr>
               <th style={thStyle}>Price</th>
