@@ -5,17 +5,18 @@ import type { FIXMessageLog } from '../fix/FIXMessageLog.js';
 
 export function registerOrderRoutes(app: FastifyInstance, orderManager: OrderManager, store: AdminStore, fixLog: FIXMessageLog): void {
   app.post('/orders', async (req, reply) => {
-    const { venueId, symbol, side, price, quantity, account, traderId } = req.body as {
+    const { venueId, symbol, side, orderType, price, quantity, account, traderId } = req.body as {
       venueId: string;
       symbol: string;
       side: 'buy' | 'sell';
-      price: number;
+      orderType: 'limit' | 'market';
+      price?: number;
       quantity: number;
       account: string;
       traderId: string;
     };
     try {
-      const record = orderManager.submit({ venueId, symbol, side, price, quantity, account, traderId });
+      const record = orderManager.submit({ venueId, symbol, side, orderType, price, quantity, account, traderId });
       reply.code(201);
       return record;
     } catch (e: any) {

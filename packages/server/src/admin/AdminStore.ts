@@ -43,6 +43,7 @@ export interface OrderRecord {
   venueId: string;
   symbol: string;
   side: 'buy' | 'sell';
+  orderType: 'limit' | 'market';
   price: number;
   quantity: number;
   account: string;
@@ -115,6 +116,7 @@ export class AdminStore {
     // Migration: add new columns to existing file-backed DBs (silently ignored for fresh DBs)
     try { this.db.exec('ALTER TABLE orders ADD COLUMN ord_rej_reason INTEGER'); } catch {}
     try { this.db.exec('ALTER TABLE orders ADD COLUMN rej_text TEXT'); } catch {}
+    try { this.db.exec("ALTER TABLE orders ADD COLUMN order_type TEXT NOT NULL DEFAULT 'limit'"); } catch {}
   }
 
   // ─── Session Configs ──────────────────────────────────────────────────────
@@ -275,8 +277,8 @@ export class AdminStore {
   createOrder(data: Omit<OrderRecord, 'status' | 'filledQty'>): OrderRecord {
     const record: OrderRecord = { ...data, status: 'PendingNew', filledQty: 0 };
     this.db.prepare(
-      'INSERT INTO orders (cl_ord_id, venue_id, symbol, side, price, quantity, account, trader_id, status, filled_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(record.clOrdId, record.venueId, record.symbol, record.side, record.price, record.quantity, record.account, record.traderId, record.status, record.filledQty);
+      'INSERT INTO orders (cl_ord_id, venue_id, symbol, side, price, quantity, account, trader_id, status, filled_qty, order_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(record.clOrdId, record.venueId, record.symbol, record.side, record.price, record.quantity, record.account, record.traderId, record.status, record.filledQty, record.orderType);
     return record;
   }
 
@@ -364,6 +366,7 @@ function rowToOrder(row: any): OrderRecord {
     venueId: row.venue_id,
     symbol: row.symbol,
     side: row.side as 'buy' | 'sell',
+    orderType: (row.order_type ?? 'limit') as 'limit' | 'market',
     price: row.price,
     quantity: row.quantity,
     account: row.account,

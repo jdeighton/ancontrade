@@ -35,6 +35,7 @@ export interface OrderRecord {
   venueId: string;
   symbol: string;
   side: 'buy' | 'sell';
+  orderType: 'limit' | 'market';
   price: number;
   quantity: number;
   account: string;

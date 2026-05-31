@@ -39,7 +39,7 @@ export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHi
         fontWeight: 600,
       }),
     },
-    { field: 'price',     headerName: 'Price',         flex: 1 },
+    { valueGetter: (p: any) => p.data.orderType === 'market' ? 'MKT' : p.data.price, headerName: 'Price', flex: 1 },
     { field: 'quantity',  headerName: 'Qty',           flex: 1 },
     {
       field: 'status', headerName: 'Status', flex: 1,

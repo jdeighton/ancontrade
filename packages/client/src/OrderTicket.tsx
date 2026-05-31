@@ -16,15 +16,17 @@ function isValidTick(price: number, tickSize: number): boolean {
 }
 
 export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.0001, onSubmitted }: Props) {
+  const [orderType, setOrderType] = useState<'limit' | 'market'>('limit');
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState('');
   const [account, setAccount] = useState(accounts[0]?.account ?? '');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const isMarket = orderType === 'market';
   const priceNum = parseFloat(price);
   const qtyNum = parseFloat(quantity);
-  const priceValid = !isNaN(priceNum) && priceNum > 0 && isValidTick(priceNum, tickSize);
+  const priceValid = isMarket || (!isNaN(priceNum) && priceNum > 0 && isValidTick(priceNum, tickSize));
   const qtyValid = !isNaN(qtyNum) && qtyNum > 0;
   const canSubmit = priceValid && qtyValid && account && !submitting;
 
@@ -33,14 +35,16 @@ export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.
     setError(null);
     setSubmitting(true);
     try {
+      const body: Record<string, unknown> = { venueId, symbol, side, orderType, quantity: qtyNum, account, traderId };
+      if (!isMarket) body.price = priceNum;
       const res = await fetch('/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ venueId, symbol, side, price: priceNum, quantity: qtyNum, account, traderId }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError(body.error ?? `Server error ${res.status}`);
+        const b = await res.json().catch(() => ({}));
+        setError((b as any).error ?? `Server error ${res.status}`);
       } else {
         onSubmitted();
       }
@@ -62,7 +66,14 @@ export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.
 
       <label style={{ display: 'block', marginBottom: 6 }}>
         Order Type
-        <input value="Limit" readOnly style={{ display: 'block', width: '100%', boxSizing: 'border-box' }} />
+        <select
+          value={orderType}
+          onChange={e => setOrderType(e.target.value as 'limit' | 'market')}
+          style={{ display: 'block', width: '100%', boxSizing: 'border-box' }}
+        >
+          <option value="limit">Limit</option>
+          <option value="market">Market</option>
+        </select>
       </label>
 
       <label style={{ display: 'block', marginBottom: 6 }}>
@@ -72,10 +83,15 @@ export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.
           value={price}
           onChange={e => setPrice(e.target.value)}
           step={tickSize}
-          style={{ display: 'block', width: '100%', boxSizing: 'border-box', borderColor: price && !priceValid ? 'var(--error)' : undefined }}
-          placeholder={`tick size: ${tickSize}`}
+          disabled={isMarket}
+          style={{
+            display: 'block', width: '100%', boxSizing: 'border-box',
+            borderColor: !isMarket && price && !priceValid ? 'var(--error)' : undefined,
+            opacity: isMarket ? 0.4 : 1,
+          }}
+          placeholder={isMarket ? 'Market order' : `tick size: ${tickSize}`}
         />
-        {price && !priceValid && (
+        {!isMarket && price && !priceValid && (
           <span style={{ color: 'var(--error)', fontSize: 11 }}>Must be a multiple of {tickSize}</span>
         )}
       </label>

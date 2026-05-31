@@ -5,6 +5,7 @@ describe('buildNewOrderSingle', () => {
   const base = {
     symbol: 'EUR/USD',
     side: 'buy' as const,
+    orderType: 'limit' as const,
     price: 1.1050,
     quantity: 1000,
     account: 'ACC001',
@@ -36,12 +37,12 @@ describe('buildNewOrderSingle', () => {
     expect(m.get(54)).toBe('2');
   });
 
-  it('sets OrdType tag 40 = 2 (limit)', () => {
+  it('sets OrdType tag 40 = 2 for limit', () => {
     const m = buildNewOrderSingle('CID1', base);
     expect(m.get(40)).toBe('2');
   });
 
-  it('sets Price tag 44 as string', () => {
+  it('sets Price tag 44 as string for limit', () => {
     const m = buildNewOrderSingle('CID1', base);
     expect(m.get(44)).toBe('1.105');
   });
@@ -59,5 +60,26 @@ describe('buildNewOrderSingle', () => {
   it('sets SenderSubID tag 50 as traderId', () => {
     const m = buildNewOrderSingle('CID1', base);
     expect(m.get(50)).toBe('TRD1');
+  });
+
+  describe('market order', () => {
+    const mkt = { ...base, orderType: 'market' as const, price: undefined };
+
+    it('sets OrdType tag 40 = 1 for market', () => {
+      const m = buildNewOrderSingle('CID1', mkt);
+      expect(m.get(40)).toBe('1');
+    });
+
+    it('omits Price tag 44 for market', () => {
+      const m = buildNewOrderSingle('CID1', mkt);
+      expect(m.has(44)).toBe(false);
+    });
+
+    it('still sets qty, account, traderId for market', () => {
+      const m = buildNewOrderSingle('CID1', mkt);
+      expect(m.get(38)).toBe('1000');
+      expect(m.get(1)).toBe('ACC001');
+      expect(m.get(50)).toBe('TRD1');
+    });
   });
 });
