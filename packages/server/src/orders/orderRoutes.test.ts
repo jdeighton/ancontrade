@@ -182,3 +182,71 @@ describe('Execution report sequence — PendingNew → New → PartiallyFilled �
     expect(postRes.statusCode).toBe(201);
   });
 });
+
+describe('DELETE /orders/:clOrdId — cancel workflow', () => {
+  const SOH = '\x01';
+  const fix = (fields: Record<number, string>) =>
+    Object.entries(fields).map(([t, v]) => `${t}=${v}`).join(SOH);
+
+  it('returns 202 and sends 35=F when order is in New state', async () => {
+    const { app, engine, venueId } = await makeConnectedServer();
+
+    const postRes = await app.inject({
+      method: 'POST', url: '/orders',
+      body: { venueId, symbol: 'EUR/USD', side: 'buy', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' },
+    });
+    const { clOrdId } = postRes.json();
+    const orSessionId = 'CLI-OR_EXCH-FIX.4.4';
+
+    // Advance to New state
+    engine.triggerIncoming(orSessionId, fix({ 35: '8', 11: clOrdId, 37: 'EXCH001', 39: '0', 14: '0', 6: '0' }));
+
+    const cancelRes = await app.inject({ method: 'DELETE', url: `/orders/${clOrdId}` });
+    expect(cancelRes.statusCode).toBe(202);
+
+    const cancelMsg = engine.sent[engine.sent.length - 1];
+    expect(cancelMsg.fields.get(35)).toBe('F');
+    expect(cancelMsg.fields.get(41)).toBe(clOrdId);
+    expect(cancelMsg.fields.get(37)).toBe('EXCH001');
+  });
+
+  it('returns 409 when order is in PendingNew state (no exchOrdId)', async () => {
+    const { app, venueId } = await makeConnectedServer();
+    const postRes = await app.inject({
+      method: 'POST', url: '/orders',
+      body: { venueId, symbol: 'EUR/USD', side: 'buy', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' },
+    });
+    const { clOrdId } = postRes.json();
+
+    const cancelRes = await app.inject({ method: 'DELETE', url: `/orders/${clOrdId}` });
+    expect(cancelRes.statusCode).toBe(409);
+  });
+
+  it('returns 404 for unknown clOrdId', async () => {
+    const { app } = await makeConnectedServer();
+    const cancelRes = await app.inject({ method: 'DELETE', url: '/orders/nonexistent' });
+    expect(cancelRes.statusCode).toBe(404);
+  });
+
+  it('replays 35=9 cancel reject and order remains in prior state', async () => {
+    const { app, engine, venueId } = await makeConnectedServer();
+
+    const postRes = await app.inject({
+      method: 'POST', url: '/orders',
+      body: { venueId, symbol: 'EUR/USD', side: 'buy', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' },
+    });
+    const { clOrdId } = postRes.json();
+    const orSessionId = 'CLI-OR_EXCH-FIX.4.4';
+
+    engine.triggerIncoming(orSessionId, fix({ 35: '8', 11: clOrdId, 37: 'EXCH001', 39: '0', 14: '0', 6: '0' }));
+    await app.inject({ method: 'DELETE', url: `/orders/${clOrdId}` });
+    const cancelClOrdId = engine.sent[engine.sent.length - 1].fields.get(11)!;
+
+    engine.triggerIncoming(orSessionId, fix({ 35: '9', 11: cancelClOrdId, 102: '1', 58: 'Unknown order' }));
+
+    // Order should remain in New state (cancel was rejected)
+    const res = await app.inject({ method: 'GET', url: '/orders' });
+    const [order] = res.json();
+    expect(order.status).toBe('New');
+  });
+});

@@ -26,4 +26,17 @@ export function registerOrderRoutes(app: FastifyInstance, orderManager: OrderMan
   app.get('/orders', async () => {
     return store.listOrders();
   });
+
+  app.delete('/orders/:clOrdId', async (req, reply) => {
+    const { clOrdId } = req.params as { clOrdId: string };
+    try {
+      orderManager.cancel(clOrdId);
+      reply.code(202);
+      return {};
+    } catch (e: any) {
+      const status = e.message.includes('not found') ? 404 : 409;
+      reply.code(status);
+      return { error: e.message };
+    }
+  });
 }

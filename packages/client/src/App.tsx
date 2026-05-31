@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AccountConfig, Instrument, OrderRecord, TraderIdConfig, Venue, VenueStatus } from './types.js';
+import type { AccountConfig, CancelRejectEvent, Instrument, OrderRecord, TraderIdConfig, Venue, VenueStatus } from './types.js';
 import { OrderTicket } from './OrderTicket.js';
 import { OrderBlotter } from './OrderBlotter.js';
 
@@ -8,6 +8,13 @@ async function apiFetch<T>(url: string): Promise<T> {
   if (!res.ok) throw new Error(`${url}: ${res.status}`);
   return res.json() as Promise<T>;
 }
+
+const CXL_REJ_REASONS: Record<number, string> = {
+  0: 'Too Late to Cancel',
+  1: 'Unknown Order',
+  2: 'Broker Option',
+  3: 'Already Pending Cancel',
+};
 
 export function App() {
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -18,6 +25,7 @@ export function App() {
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState('');
+  const [cancelReject, setCancelReject] = useState<CancelRejectEvent | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const refreshOrders = useCallback(() => {
@@ -42,7 +50,7 @@ export function App() {
   useEffect(() => {
     const ws = new WebSocket(`ws://${location.host}/ws`);
     ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data) as { type: string; payload: VenueStatus | OrderRecord };
+      const msg = JSON.parse(e.data) as { type: string; payload: any };
       if (msg.type === 'venue-status') {
         const status = msg.payload as VenueStatus;
         setVenueStatus(v => (v?.venueId === status.venueId || !v) ? status : v);
@@ -57,6 +65,8 @@ export function App() {
           }
           return [...prev, updated];
         });
+      } else if (msg.type === 'cancel-reject') {
+        setCancelReject(msg.payload as CancelRejectEvent);
       }
     };
     wsRef.current = ws;
@@ -97,6 +107,10 @@ export function App() {
     setOrders([]);
   }
 
+  async function handleCancelRequest(clOrdId: string) {
+    await fetch(`/orders/${clOrdId}`, { method: 'DELETE' });
+  }
+
   const orConnected = venueStatus?.venueId === selectedVenueId && venueStatus.orConnected;
   const openStatuses = new Set(['PendingNew', 'New', 'PartiallyFilled']);
   const hasOpenOrders = orders.some(o => openStatuses.has(o.status));
@@ -104,6 +118,27 @@ export function App() {
   return (
     <div style={{ fontFamily: 'sans-serif', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <h2 style={{ margin: 0 }}>Ancontrade</h2>
+
+      {/* Cancel-reject modal */}
+      {cancelReject && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: '#1e1e1e', border: '1px solid #555', borderRadius: 6, padding: 24, minWidth: 360 }}>
+            <h3 style={{ margin: '0 0 12px', color: '#c0392b' }}>Cancel Rejected</h3>
+            <table style={{ fontSize: 13, borderCollapse: 'collapse', width: '100%' }}>
+              <tbody>
+                <tr><td style={{ paddingRight: 12, color: '#888' }}>Symbol</td><td>{cancelReject.order.symbol}</td></tr>
+                <tr><td style={{ color: '#888' }}>Side</td><td>{cancelReject.order.side}</td></tr>
+                <tr><td style={{ color: '#888' }}>Qty</td><td>{cancelReject.order.quantity}</td></tr>
+                <tr><td style={{ color: '#888' }}>Price</td><td>{cancelReject.order.price}</td></tr>
+                <tr><td style={{ color: '#888' }}>Status</td><td>{cancelReject.order.status}</td></tr>
+                <tr><td style={{ color: '#888' }}>Reason</td><td>{CXL_REJ_REASONS[cancelReject.cxlRejReason] ?? `Code ${cancelReject.cxlRejReason}`}</td></tr>
+                {cancelReject.text && <tr><td style={{ color: '#888' }}>Text</td><td>{cancelReject.text}</td></tr>}
+              </tbody>
+            </table>
+            <button onClick={() => setCancelReject(null)} style={{ marginTop: 16 }}>Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {orConnected && hasOpenOrders && (
         <div style={{ padding: '8px 12px', background: '#7a4f00', color: '#ffd580', borderRadius: 4, fontSize: 13 }}>
@@ -161,7 +196,7 @@ export function App() {
                 Reset History
               </button>
             </div>
-            <OrderBlotter orders={orders} />
+            <OrderBlotter orders={orders} onCancelRequest={handleCancelRequest} />
           </div>
         </div>
       )}

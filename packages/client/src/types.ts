@@ -41,6 +41,15 @@ export interface OrderRecord {
   traderId: string;
   status: OrderStatus;
   filledQty: number;
+  exchOrdId?: string;
+  avgFillPrice?: number;
+}
+
+export interface CancelRejectEvent {
+  clOrdId: string;
+  cxlRejReason: number;
+  text: string;
+  order: OrderRecord;
 }
 
 export interface Instrument {

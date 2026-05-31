@@ -135,3 +135,81 @@ describe('OrderManager — execution report state machine', () => {
     expect(updates).toHaveLength(1);
   });
 });
+
+describe('OrderManager — cancel workflow', () => {
+  let store: AdminStore;
+  let engine: StubFIXEngine;
+  let om: OrderManager;
+  let orSessionId: string;
+  let order: ReturnType<typeof makeSetup>['order'];
+
+  beforeEach(() => {
+    ({ store, engine, om, orSessionId, order } = makeSetup());
+    // Advance order to New state so it can be cancelled
+    engine.triggerIncoming(orSessionId, erRaw({ 35: '8', 11: 'CID1', 37: 'EXCH001', 39: '0', 14: '0', 6: '0' }));
+  });
+
+  it('cancel sends 35=F with correct tags on the OR session', () => {
+    const before = engine.sent.length;
+    om.cancel('CID1');
+    expect(engine.sent).toHaveLength(before + 1);
+    const { fields } = engine.sent[engine.sent.length - 1];
+    expect(fields.get(35)).toBe('F');
+    expect(fields.get(41)).toBe('CID1');
+    expect(fields.get(37)).toBe('EXCH001');
+    expect(fields.get(55)).toBe('EUR/USD');
+    expect(fields.get(54)).toBe('1');
+  });
+
+  it('cancel throws when order is not in a cancellable state', () => {
+    engine.triggerIncoming(orSessionId, erRaw({ 35: '8', 11: 'CID1', 37: 'EXCH001', 39: '2', 14: '1000', 6: '1.105' }));
+    expect(() => om.cancel('CID1')).toThrow();
+  });
+
+  it('cancel throws when order has no exchOrdId (PendingNew)', () => {
+    const store2 = new AdminStore(':memory:');
+    const mdSC = store2.createSessionConfig({ name: 'MD', host: '127.0.0.1', port: 9001, senderCompId: 'CLI', targetCompId: 'MD_EXCH' });
+    const orSC2 = store2.createSessionConfig({ name: 'OR', host: '127.0.0.1', port: 9002, senderCompId: 'CLI', targetCompId: 'OR_EXCH' });
+    const tr = store2.createTraderIdConfig({ traderId: 'TRD1' });
+    const ac = store2.createAccountConfig({ account: 'ACC001' });
+    const venue2 = store2.createVenue({ name: 'V', mdSessionConfigId: mdSC.id, orSessionConfigId: orSC2.id, traderIdConfigId: tr.id, accountConfigIds: [ac.id] });
+    const engine2 = new StubFIXEngine();
+    const vm2 = new VenueManager(engine2, store2);
+    vm2.connect(venue2.id);
+    store2.createOrder({ clOrdId: 'CID_PENDING', venueId: venue2.id, symbol: 'EUR/USD', side: 'buy', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' });
+    const om2 = new OrderManager(new ClientOrderIdGenerator(new Date()), vm2, store2);
+    expect(() => om2.cancel('CID_PENDING')).toThrow();
+  });
+
+  it('onCancelReject fires when 35=9 is received for a pending cancel', () => {
+    om.cancel('CID1');
+    const cancelClOrdId = engine.sent[engine.sent.length - 1].fields.get(11)!;
+
+    const rejects: import('./OrderManager.js').CancelRejectEvent[] = [];
+    om.onCancelReject(e => rejects.push(e));
+    engine.triggerIncoming(orSessionId, erRaw({ 35: '9', 11: cancelClOrdId, 102: '1', 58: 'Unknown order' }));
+
+    expect(rejects).toHaveLength(1);
+    expect(rejects[0].cxlRejReason).toBe(1);
+    expect(rejects[0].text).toBe('Unknown order');
+    expect(rejects[0].order.clOrdId).toBe('CID1');
+  });
+
+  it('onCancelReject does not fire for unknown cancel ClOrdID', () => {
+    const rejects: unknown[] = [];
+    om.onCancelReject(e => rejects.push(e));
+    engine.triggerIncoming(orSessionId, erRaw({ 35: '9', 11: 'UNKNOWN_CXL', 102: '0' }));
+    expect(rejects).toHaveLength(0);
+  });
+
+  it('onCancelReject unsubscribe stops callbacks', () => {
+    om.cancel('CID1');
+    const cancelClOrdId = engine.sent[engine.sent.length - 1].fields.get(11)!;
+
+    const rejects: unknown[] = [];
+    const unsub = om.onCancelReject(e => rejects.push(e));
+    unsub();
+    engine.triggerIncoming(orSessionId, erRaw({ 35: '9', 11: cancelClOrdId, 102: '0' }));
+    expect(rejects).toHaveLength(0);
+  });
+});

@@ -31,7 +31,7 @@ export function buildServer(dbPath = ':memory:', engine?: IFIXEngine) {
     return { status: 'ok' };
   });
 
-  // WebSocket push: venue status + order updates
+  // WebSocket push: venue status + order updates + cancel rejects
   app.get('/ws', { websocket: true }, (socket) => {
     const unsubVenue = venueManager.onStatusChange((status) => {
       socket.send(JSON.stringify({ type: 'venue-status', payload: status }));
@@ -39,7 +39,10 @@ export function buildServer(dbPath = ':memory:', engine?: IFIXEngine) {
     const unsubOrder = orderManager.onOrderUpdate((record) => {
       socket.send(JSON.stringify({ type: 'order-update', payload: record }));
     });
-    socket.on('close', () => { unsubVenue(); unsubOrder(); });
+    const unsubCancelReject = orderManager.onCancelReject((event) => {
+      socket.send(JSON.stringify({ type: 'cancel-reject', payload: event }));
+    });
+    socket.on('close', () => { unsubVenue(); unsubOrder(); unsubCancelReject(); });
   });
 
   app.addHook('onClose', () => adminStore.close());

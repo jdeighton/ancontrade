@@ -5,31 +5,49 @@ import type { OrderRecord } from './types.js';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const columnDefs: ColDef<OrderRecord>[] = [
-  { field: 'clOrdId',   headerName: 'ClOrdID',      flex: 2 },
-  { field: 'symbol',    headerName: 'Symbol',        flex: 1 },
-  { field: 'side',      headerName: 'Side',          flex: 1 },
-  { field: 'price',     headerName: 'Price',         flex: 1 },
-  { field: 'quantity',  headerName: 'Qty',           flex: 1 },
-  { field: 'status',    headerName: 'Status',        flex: 1,
-    cellStyle: (p: any) => {
-      const colors: Record<string, string> = {
-        PendingNew: '#888', New: '#fff', PartiallyFilled: '#f0a500',
-        Filled: '#1a7f1a', Cancelled: '#888', Rejected: '#c0392b',
-      };
-      return { color: colors[p.value] };
-    },
-  },
-  { field: 'filledQty',                                          headerName: 'Filled',     flex: 1 },
-  { valueGetter: (p: any) => p.data.avgFillPrice,               headerName: 'Avg Px',     flex: 1 },
-  { valueGetter: (p: any) => p.data.exchOrdId ?? '',            headerName: 'Exch OrdID', flex: 2 },
-];
+const CANCELLABLE = new Set(['New', 'PartiallyFilled']);
 
 interface Props {
   orders: OrderRecord[];
+  onCancelRequest: (clOrdId: string) => void;
 }
 
-export function OrderBlotter({ orders }: Props) {
+export function OrderBlotter({ orders, onCancelRequest }: Props) {
+  const columnDefs: ColDef<OrderRecord>[] = [
+    { field: 'clOrdId',   headerName: 'ClOrdID',      flex: 2 },
+    { field: 'symbol',    headerName: 'Symbol',        flex: 1 },
+    { field: 'side',      headerName: 'Side',          flex: 1 },
+    { field: 'price',     headerName: 'Price',         flex: 1 },
+    { field: 'quantity',  headerName: 'Qty',           flex: 1 },
+    { field: 'status',    headerName: 'Status',        flex: 1,
+      cellStyle: (p: any) => {
+        const colors: Record<string, string> = {
+          PendingNew: '#888', New: '#fff', PartiallyFilled: '#f0a500',
+          Filled: '#1a7f1a', Cancelled: '#888', Rejected: '#c0392b',
+        };
+        return { color: colors[p.value] };
+      },
+    },
+    { field: 'filledQty',                                       headerName: 'Filled',     flex: 1 },
+    { valueGetter: (p: any) => p.data.avgFillPrice,            headerName: 'Avg Px',     flex: 1 },
+    { valueGetter: (p: any) => p.data.exchOrdId ?? '',         headerName: 'Exch OrdID', flex: 2 },
+    {
+      headerName: '', width: 80, sortable: false, filter: false,
+      cellRenderer: (p: any) => {
+        const canCancel = CANCELLABLE.has(p.data.status);
+        return (
+          <button
+            disabled={!canCancel}
+            style={{ fontSize: 11, padding: '2px 6px', cursor: canCancel ? 'pointer' : 'default', opacity: canCancel ? 1 : 0.4 }}
+            onClick={() => onCancelRequest(p.data.clOrdId)}
+          >
+            Cancel
+          </button>
+        );
+      },
+    },
+  ];
+
   return (
     <div style={{ flex: 1, minHeight: 300 }}>
       <h3 style={{ margin: '0 0 4px' }}>Order Blotter</h3>
