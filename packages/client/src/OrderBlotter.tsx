@@ -1,5 +1,6 @@
+import { useCallback, useEffect, useRef } from 'react';
 import { AllCommunityModule, ModuleRegistry, colorSchemeDark, themeBalham } from 'ag-grid-community';
-import type { ColDef } from 'ag-grid-community';
+import type { ColDef, IRowNode } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import type { OrderRecord } from './types.js';
 
@@ -24,21 +25,44 @@ const ROW_BG: Record<string, string> = {
   Rejected:        'var(--status-rejected-bg)',
 };
 
+const STATUS_FILTER_MAP: Record<string, string[]> = {
+  Working:   ['PendingNew', 'New', 'PartiallyFilled'],
+  Fills:     ['Filled', 'PartiallyFilled'],
+  Rejected:  ['Rejected'],
+  Cancelled: ['Cancelled'],
+};
+
 function fmtTime(iso: string | undefined): string {
   if (!iso) return '';
   return iso.slice(0, 23).replace('T', ' ');
 }
 
+export type BlotterFilter = 'All' | 'Working' | 'Fills' | 'Rejected' | 'Cancelled';
+
 interface Props {
   orders: OrderRecord[];
   onCancelRequest: (clOrdId: string) => void;
   onRowSelected?: (clOrdId: string | null) => void;
-  onResetHistory?: () => void;
+  statusFilter?: BlotterFilter;
   isDark?: boolean;
 }
 
-export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHistory, isDark = true }: Props) {
+export function OrderBlotter({ orders, onCancelRequest, onRowSelected, statusFilter = 'All', isDark = true }: Props) {
   const gridTheme = isDark ? THEME_DARK : THEME_LIGHT;
+  const gridRef = useRef<AgGridReact<OrderRecord>>(null);
+  const statusFilterRef = useRef(statusFilter);
+
+  useEffect(() => {
+    statusFilterRef.current = statusFilter;
+    gridRef.current?.api?.onFilterChanged();
+  }, [statusFilter]);
+
+  const isExternalFilterPresent = useCallback(() => statusFilterRef.current !== 'All', []);
+
+  const doesExternalFilterPass = useCallback((node: IRowNode<OrderRecord>) => {
+    const allowed = STATUS_FILTER_MAP[statusFilterRef.current];
+    return allowed ? allowed.includes(node.data?.status ?? '') : true;
+  }, []);
 
   const columnDefs: ColDef<OrderRecord>[] = [
     { field: 'clOrdId',  headerName: 'ClOrdID',     flex: 2, filter: 'agTextColumnFilter' },
@@ -114,20 +138,16 @@ export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHi
 
   return (
     <div style={{ flex: 1, minHeight: 300 }}>
-      {onResetHistory && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-          <button onClick={onResetHistory} style={{ fontSize: 12, color: 'var(--error)' }}>
-            Reset History
-          </button>
-        </div>
-      )}
       <AgGridReact
+        ref={gridRef}
         theme={gridTheme}
         rowData={orders}
         columnDefs={columnDefs}
         domLayout="autoHeight"
         getRowId={p => p.data.clOrdId}
         rowSelection="single"
+        isExternalFilterPresent={isExternalFilterPresent}
+        doesExternalFilterPass={doesExternalFilterPass}
         getRowStyle={(p: any) => {
           const bg = ROW_BG[p.data?.status];
           return bg ? { background: bg } : undefined;

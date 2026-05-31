@@ -1,14 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
+import { Dropdown } from 'primereact/dropdown';
+import { FloatLabel } from 'primereact/floatlabel';
 import { InputSwitch } from 'primereact/inputswitch';
 import { Splitter, SplitterPanel } from 'primereact/splitter';
+import { Toolbar } from 'primereact/toolbar';
 import type { AccountConfig, CancelRejectEvent, Instrument, OrderRecord, PriceLevelsEvent, StatusAlertEvent, TraderIdConfig, Venue, VenueStatus } from './types.js';
+import type { BlotterFilter } from './OrderBlotter.js';
 import { OrderTicket } from './OrderTicket.js';
 import { OrderBlotter } from './OrderBlotter.js';
 import { OrderEventsPanel } from './OrderEventsPanel.js';
 import { PriceLadder } from './PriceLadder.js';
 import { StatusBar } from './StatusBar.js';
 import { applyPrimeTheme } from './primeTheme.js';
+
+const BLOTTER_FILTER_OPTIONS: { label: string; value: BlotterFilter }[] = [
+  { label: 'All',       value: 'All' },
+  { label: 'Working',   value: 'Working' },
+  { label: 'Fills',     value: 'Fills' },
+  { label: 'Rejected',  value: 'Rejected' },
+  { label: 'Cancelled', value: 'Cancelled' },
+];
 
 async function apiFetch<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -45,6 +58,7 @@ export function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
   const [subscribedSymbol, setSubscribedSymbol] = useState<string | null>(null);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [blotterFilter, setBlotterFilter] = useState<BlotterFilter>('All');
   const [priceOverride, setPriceOverride] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const subscribedSymbolRef = useRef<string | null>(null);
@@ -163,18 +177,34 @@ export function App() {
     await fetch(`/venues/${venueId}/instruments/${encodeURIComponent(symbol)}/subscribe`, { method: 'POST' }).catch(console.error);
   }, []);
 
-  async function handleResetHistory() {
-    if (!window.confirm('Reset all order history? This cannot be undone.')) return;
-    await fetch('/admin/orders/reset', { method: 'POST' });
-    setOrders([]);
-  }
-
   async function handleCancelRequest(clOrdId: string) {
     const res = await fetch(`/orders/${clOrdId}`, { method: 'DELETE' });
     if (!res.ok) {
       const body = await res.json().catch(() => ({})) as { error?: string };
       alert(`Cancel failed: ${body.error ?? res.status}`);
     }
+  }
+
+  function handleDownloadCsv() {
+    const fmtTime = (iso?: string) => iso ? iso.slice(0, 23).replace('T', ' ') : '';
+    const escape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const headers = ['ClOrdID', 'Symbol', 'Side', 'Price', 'Qty', 'Status', 'Filled', 'Avg Px', 'Exch OrdID', 'Rej Reason', 'Rej Text', 'Entry Time', 'Last Updated'];
+    const rows = orders.map(o => [
+      o.clOrdId, o.symbol, o.side,
+      o.orderType === 'market' ? 'MKT' : o.price,
+      o.quantity, o.status, o.filledQty,
+      o.avgFillPrice ?? '', o.exchOrdId ?? '',
+      o.ordRejReason ?? '', o.rejText ?? '',
+      fmtTime(o.entryTime), fmtTime(o.lastUpdated),
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(escape).join(',')).join('\r\n');
+    const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+      download: `OrderBlotter-${ts}.csv`,
+    });
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   const orConnected = venueStatus?.venueId === selectedVenueId && venueStatus.orConnected;
@@ -265,82 +295,120 @@ export function App() {
 
       <StatusBar alerts={statusAlerts} />
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <label>
-          Venue:{' '}
-          <select value={selectedVenueId} onChange={e => setSelectedVenueId(e.target.value)}>
-            {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-          </select>
-        </label>
-        <button onClick={handleConnect}>Connect</button>
-        <button onClick={handleDisconnect}>Disconnect</button>
-        <span style={{ fontSize: 12, color: orConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
-          OR: {orConnected ? 'Connected' : 'Disconnected'}
-        </span>
-        <span style={{ fontSize: 12, color: mdConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
-          MD: {mdConnected ? 'Connected' : 'Disconnected'}
-        </span>
-      </div>
-
-      {instruments.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <label>
-            Instrument:{' '}
-            <select value={selectedSymbol} onChange={e => setSelectedSymbol(e.target.value)}>
-              {instruments.map(i => (
-                <option key={i.symbol} value={i.symbol}>{i.symbol}</option>
-              ))}
-            </select>
-          </label>
-          {instruments.find(i => i.symbol === selectedSymbol) && (
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              tick: {instruments.find(i => i.symbol === selectedSymbol)!.tickSize}
+      <Toolbar
+        start={
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <FloatLabel>
+              <Dropdown
+                inputId="venue-select"
+                value={selectedVenueId}
+                options={venues.map(v => ({ label: v.name, value: v.id }))}
+                onChange={e => setSelectedVenueId(e.value)}
+                style={{ minWidth: 160 }}
+              />
+              <label htmlFor="venue-select">Venue</label>
+            </FloatLabel>
+            <Button label="Connect" severity="success" outlined onClick={handleConnect} />
+            <Button label="Disconnect" severity="warning" outlined onClick={handleDisconnect} />
+          </div>
+        }
+        end={
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: orConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
+              OR: {orConnected ? 'Connected' : 'Disconnected'}
             </span>
-          )}
-          {mdConnected && selectedSymbol && (
-            subscribedSymbol === selectedSymbol
-              ? <span style={{ fontSize: 12, color: 'var(--status-filled)' }}>● Subscribed</span>
-              : <button
-                  style={{ fontSize: 12, padding: '2px 8px' }}
-                  onClick={() => subscribeToSymbol(selectedVenueId, selectedSymbol)}
-                >
-                  Subscribe
-                </button>
-          )}
-        </div>
-      )}
+            <span style={{ fontSize: 12, color: mdConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
+              MD: {mdConnected ? 'Connected' : 'Disconnected'}
+            </span>
+          </div>
+        }
+      />
 
       {venue && (
         <Splitter style={{ width: '100%', border: 'none', background: 'transparent' }}>
-          <SplitterPanel size={22} minSize={15} style={{ overflow: 'auto' }}>
-            <OrderTicket
-              venueId={selectedVenueId}
-              symbol={selectedSymbol || 'N/A'}
-              tickSize={instruments.find(i => i.symbol === selectedSymbol)?.tickSize}
-              accounts={venueAccounts}
-              traderId={venueTraderId}
-              priceOverride={priceOverride}
-              onSubmitted={refreshOrders}
-            />
+
+          {/* Left: instrument selector + order ticket + price ladder */}
+          <SplitterPanel size={38} minSize={25} style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
+            {instruments.length > 0 && (
+              <Toolbar
+                start={
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                    <FloatLabel>
+                      <Dropdown
+                        inputId="instrument-select"
+                        value={selectedSymbol}
+                        options={instruments.map(i => ({ label: i.symbol, value: i.symbol }))}
+                        onChange={e => setSelectedSymbol(e.value)}
+                        style={{ minWidth: 120 }}
+                      />
+                      <label htmlFor="instrument-select">Instrument</label>
+                    </FloatLabel>
+                    {instruments.find(i => i.symbol === selectedSymbol) && (
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        tick: {instruments.find(i => i.symbol === selectedSymbol)!.tickSize}
+                      </span>
+                    )}
+                  </div>
+                }
+                end={
+                  mdConnected && selectedSymbol ? (
+                    subscribedSymbol === selectedSymbol
+                      ? <span style={{ fontSize: 12, color: 'var(--status-filled)' }}>● Subscribed</span>
+                      : <Button label="Subscribe" outlined onClick={() => subscribeToSymbol(selectedVenueId, selectedSymbol)} />
+                  ) : undefined
+                }
+              />
+            )}
+            <Splitter style={{ border: 'none', background: 'transparent', flex: 1 }}>
+              <SplitterPanel size={58} minSize={40} style={{ overflow: 'auto' }}>
+                <OrderTicket
+                  venueId={selectedVenueId}
+                  symbol={selectedSymbol || 'N/A'}
+                  tickSize={instruments.find(i => i.symbol === selectedSymbol)?.tickSize}
+                  accounts={venueAccounts}
+                  traderId={venueTraderId}
+                  priceOverride={priceOverride}
+                  onSubmitted={refreshOrders}
+                />
+              </SplitterPanel>
+              <SplitterPanel size={42} minSize={30} style={{ overflow: 'auto' }}>
+                <PriceLadder
+                  data={priceLevels?.symbol === selectedSymbol ? priceLevels : null}
+                  onPriceClick={setPriceOverride}
+                />
+              </SplitterPanel>
+            </Splitter>
           </SplitterPanel>
-          <SplitterPanel size={16} minSize={12} style={{ overflow: 'auto' }}>
-            <PriceLadder
-              data={priceLevels?.symbol === selectedSymbol ? priceLevels : null}
-              onPriceClick={setPriceOverride}
+
+          {/* Right: order blotter toolbar + blotter + events */}
+          <SplitterPanel size={62} minSize={30} style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
+            <Toolbar
+              start={
+                <FloatLabel>
+                  <Dropdown
+                    inputId="blotter-filter"
+                    value={blotterFilter}
+                    options={BLOTTER_FILTER_OPTIONS}
+                    onChange={e => setBlotterFilter(e.value)}
+                    style={{ minWidth: 130 }}
+                  />
+                  <label htmlFor="blotter-filter">Show</label>
+                </FloatLabel>
+              }
+              end={<Button label="Download CSV" icon="pi pi-download" outlined onClick={handleDownloadCsv} />}
             />
-          </SplitterPanel>
-          <SplitterPanel size={62} minSize={30} style={{ overflow: 'auto' }}>
             <OrderBlotter
               orders={orders}
               onCancelRequest={handleCancelRequest}
               onRowSelected={setSelectedClOrdId}
-              onResetHistory={handleResetHistory}
+              statusFilter={blotterFilter}
               isDark={theme === 'dark'}
             />
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 8 }}>
               <OrderEventsPanel clOrdId={selectedClOrdId} isDark={theme === 'dark'} />
             </div>
           </SplitterPanel>
+
         </Splitter>
       )}
     </div>
