@@ -41,6 +41,7 @@ export function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
   const [subscribedSymbol, setSubscribedSymbol] = useState<string | null>(null);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [priceOverride, setPriceOverride] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const subscribedSymbolRef = useRef<string | null>(null);
 
@@ -317,9 +318,13 @@ export function App() {
             tickSize={instruments.find(i => i.symbol === selectedSymbol)?.tickSize}
             accounts={venueAccounts}
             traderId={venueTraderId}
+            priceOverride={priceOverride}
             onSubmitted={refreshOrders}
           />
-          <PriceLadder data={priceLevels?.symbol === selectedSymbol ? priceLevels : null} />
+          <PriceLadder
+            data={priceLevels?.symbol === selectedSymbol ? priceLevels : null}
+            onPriceClick={setPriceOverride}
+          />
           <div style={{ flex: 1 }}>
             <OrderBlotter orders={orders} onCancelRequest={handleCancelRequest} onRowSelected={setSelectedClOrdId} onResetHistory={handleResetHistory} />
             <div style={{ marginTop: 16 }}>

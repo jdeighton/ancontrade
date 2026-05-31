@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AccountConfig } from './types.js';
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
   accounts: AccountConfig[];
   traderId: string;
   tickSize?: number;
+  priceOverride?: number | null;
   onSubmitted: () => void;
 }
 
@@ -15,13 +16,20 @@ function isValidTick(price: number, tickSize: number): boolean {
   return Math.abs(ratio - Math.round(ratio)) < 1e-9;
 }
 
-export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.0001, onSubmitted }: Props) {
+export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.0001, priceOverride, onSubmitted }: Props) {
   const [orderType, setOrderType] = useState<'limit' | 'market'>('limit');
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState('');
   const [account, setAccount] = useState(accounts[0]?.account ?? '');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (priceOverride != null) {
+      setPrice(String(priceOverride));
+      setOrderType('limit');
+    }
+  }, [priceOverride]);
 
   const isMarket = orderType === 'market';
   const priceNum = parseFloat(price);

@@ -4,31 +4,41 @@ import type { PriceLevel, PriceLevelsEvent } from './types.js';
 interface Props {
   data: PriceLevelsEvent | null;
   onDepthChange?: (depth: number) => void;
+  onPriceClick?: (price: number) => void;
 }
 
 const DEPTH_MIN = 1;
 const DEPTH_MAX = 20;
 const DEPTH_DEFAULT = 5;
 
-function LevelRow({ level, side }: { level: PriceLevel; side: 'bid' | 'ask' }) {
+function LevelRow({ level, side, onPriceClick }: { level: PriceLevel; side: 'bid' | 'ask'; onPriceClick?: (price: number) => void }) {
+  const [hovered, setHovered] = useState(false);
   const hasVolume = level.volume > 0;
   const color = side === 'bid' ? 'var(--buy)' : 'var(--sell)';
   return (
-    <tr>
+    <tr
+      onClick={onPriceClick ? () => onPriceClick(level.price) : undefined}
+      onMouseEnter={onPriceClick ? () => setHovered(true) : undefined}
+      onMouseLeave={onPriceClick ? () => setHovered(false) : undefined}
+      style={{
+        cursor: onPriceClick ? 'pointer' : undefined,
+        background: hovered ? 'rgba(128, 128, 128, 0.15)' : undefined,
+      }}
+    >
       <td style={{ textAlign: 'right', paddingRight: 8, color: hasVolume ? color : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
         {level.price.toFixed(5)}
       </td>
       <td style={{ textAlign: 'right', paddingRight: 8, color: hasVolume ? 'var(--text)' : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
         {hasVolume ? level.volume.toLocaleString() : '–'}
       </td>
-      <td style={{ textAlign: 'right', color: hasVolume ? 'var(--text-muted)' : 'var(--text-muted)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+      <td style={{ textAlign: 'right', color: 'var(--text-muted)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
         {hasVolume ? level.count : ''}
       </td>
     </tr>
   );
 }
 
-export function PriceLadder({ data, onDepthChange }: Props) {
+export function PriceLadder({ data, onDepthChange, onPriceClick }: Props) {
   const [depth, setDepth] = useState(DEPTH_DEFAULT);
 
   function handleDepthChange(n: number) {
@@ -79,7 +89,7 @@ export function PriceLadder({ data, onDepthChange }: Props) {
           <tbody>
             {/* asks in reverse (highest first visually → top of book at bottom) */}
             {[...asks].reverse().map((level, i) => (
-              <LevelRow key={`ask-${i}`} level={level} side="ask" />
+              <LevelRow key={`ask-${i}`} level={level} side="ask" onPriceClick={onPriceClick} />
             ))}
             <tr>
               <td colSpan={3} style={{ textAlign: 'center', padding: '3px 0', fontSize: 11, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
@@ -87,7 +97,7 @@ export function PriceLadder({ data, onDepthChange }: Props) {
               </td>
             </tr>
             {bids.map((level, i) => (
-              <LevelRow key={`bid-${i}`} level={level} side="bid" />
+              <LevelRow key={`bid-${i}`} level={level} side="bid" onPriceClick={onPriceClick} />
             ))}
           </tbody>
         </table>
