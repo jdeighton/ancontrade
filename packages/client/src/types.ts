@@ -42,6 +42,8 @@ export interface OrderRecord {
   traderId: string;
   status: OrderStatus;
   filledQty: number;
+  entryTime?: string;
+  lastUpdated?: string;
   exchOrdId?: string;
   avgFillPrice?: number;
   ordRejReason?: number;

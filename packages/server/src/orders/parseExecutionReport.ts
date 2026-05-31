@@ -6,8 +6,18 @@ export interface ParsedER {
   ordStatus: OrderStatus;
   cumQty: number;
   avgPx: number;
+  transactTime?: string; // ISO string derived from FIX tag 60
   ordRejReason?: number;
   rejText?: string;
+}
+
+function fixTimeToISO(fixTime: string): string {
+  // YYYYMMDD-HH:MM:SS[.sss] → YYYY-MM-DDTHH:MM:SS[.sss]Z
+  const dash = fixTime.indexOf('-');
+  if (dash !== 8) return new Date().toISOString();
+  const d = fixTime.slice(0, 8);
+  const t = fixTime.slice(9);
+  return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T${t}Z`;
 }
 
 const ORD_STATUS_MAP: Record<string, OrderStatus> = {
@@ -38,9 +48,11 @@ export function parseExecutionReport(raw: string): ParsedER | null {
 
   const rejReasonRaw = extractField(raw, 103);
   const rejText = extractField(raw, 58);
+  const transactTimeRaw = extractField(raw, 60);
 
   return {
     clOrdId, exchOrdId, ordStatus, cumQty, avgPx,
+    transactTime: transactTimeRaw ? fixTimeToISO(transactTimeRaw) : undefined,
     ordRejReason: rejReasonRaw !== undefined ? Number(rejReasonRaw) : undefined,
     rejText,
   };

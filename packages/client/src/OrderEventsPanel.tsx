@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { AllCommunityModule, ModuleRegistry, themeQuartz } from 'ag-grid-community';
+import { AllCommunityModule, ModuleRegistry, colorSchemeDark, themeBalham } from 'ag-grid-community';
 import type { ColDef } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import type { FIXLogEntry } from './types.js';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+const THEME_LIGHT = themeBalham;
+const THEME_DARK = themeBalham.withPart(colorSchemeDark);
 
 const MSG_TYPE_LABELS: Record<string, string> = {
   D: 'New Order',
@@ -35,9 +38,10 @@ function eventLabel(entry: FIXLogEntry): string {
 
 interface Props {
   clOrdId: string | null;
+  isDark?: boolean;
 }
 
-export function OrderEventsPanel({ clOrdId }: Props) {
+export function OrderEventsPanel({ clOrdId, isDark = true }: Props) {
   const [entries, setEntries] = useState<FIXLogEntry[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<FIXLogEntry | null>(null);
 
@@ -61,25 +65,27 @@ export function OrderEventsPanel({ clOrdId }: Props) {
     );
   }
 
+  const gridTheme = isDark ? THEME_DARK : THEME_LIGHT;
+
   const columnDefs: ColDef<FIXLogEntry>[] = [
     {
       valueGetter: (p: any) => new Date(p.data.ts).toLocaleTimeString(undefined, { hour12: false }),
-      headerName: 'Time', width: 110,
+      headerName: 'Time', width: 110, filter: 'agTextColumnFilter',
     },
     {
       valueGetter: (p: any) => p.data.dir === 'OUT' ? 'Sent' : 'Received',
-      headerName: 'Dir', width: 90,
+      headerName: 'Dir', width: 90, filter: 'agTextColumnFilter',
       cellStyle: (p: any) => ({
         color: p.value === 'Sent' ? 'var(--buy)' : 'var(--status-partial)',
       }),
     },
     {
       valueGetter: (p: any) => eventLabel(p.data),
-      headerName: 'Event', flex: 2,
+      headerName: 'Event', flex: 2, filter: 'agTextColumnFilter',
     },
     {
       valueGetter: (p: any) => p.data.fields['37'] ?? '',
-      headerName: 'Exch OrdID', flex: 1,
+      headerName: 'Exch OrdID', flex: 1, filter: 'agTextColumnFilter',
     },
   ];
 
@@ -87,7 +93,7 @@ export function OrderEventsPanel({ clOrdId }: Props) {
     <div>
       <h3 style={{ margin: '0 0 4px' }}>Order Events — {clOrdId}</h3>
       <AgGridReact
-        theme={themeQuartz}
+        theme={gridTheme}
         rowData={entries}
         columnDefs={columnDefs}
         domLayout="autoHeight"
@@ -97,7 +103,7 @@ export function OrderEventsPanel({ clOrdId }: Props) {
         }}
       />
       {selectedEntry && (
-        <div style={{ marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, fontFamily: 'monospace', background: 'var(--surface)', maxHeight: 200, overflowY: 'auto' }}>
+        <div style={{ marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, fontFamily: 'monospace', background: 'var(--surface)' }}>
           <strong style={{ fontFamily: 'sans-serif', fontSize: 11, color: 'var(--text-muted)' }}>Raw FIX fields</strong>
           <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: 4 }}>
             <tbody>

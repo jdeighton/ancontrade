@@ -84,6 +84,7 @@ export class OrderManager {
       avgFillPrice: er.avgPx > 0 ? er.avgPx : undefined,
       ordRejReason: er.ordRejReason,
       rejText: er.rejText,
+      transactTime: er.transactTime,
     });
     for (const cb of this.updateListeners) cb(updated);
   }

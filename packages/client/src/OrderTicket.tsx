@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Dropdown } from 'primereact/dropdown';
+import { FloatLabel } from 'primereact/floatlabel';
+import { InputNumber } from 'primereact/inputnumber';
+import { InputText } from 'primereact/inputtext';
 import type { AccountConfig } from './types.js';
 
 interface Props {
@@ -16,35 +20,40 @@ function isValidTick(price: number, tickSize: number): boolean {
   return Math.abs(ratio - Math.round(ratio)) < 1e-9;
 }
 
+const ORDER_TYPE_OPTIONS = [
+  { label: 'Limit', value: 'limit' },
+  { label: 'Market', value: 'market' },
+];
+
 export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.0001, priceOverride, onSubmitted }: Props) {
   const [orderType, setOrderType] = useState<'limit' | 'market'>('limit');
-  const [price, setPrice] = useState('');
-  const [quantity, setQuantity] = useState('');
+  const [price, setPrice] = useState<number | null>(null);
+  const [quantity, setQuantity] = useState<number | null>(null);
   const [account, setAccount] = useState(accounts[0]?.account ?? '');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (priceOverride != null) {
-      setPrice(String(priceOverride));
+      setPrice(priceOverride);
       setOrderType('limit');
     }
   }, [priceOverride]);
 
   const isMarket = orderType === 'market';
-  const priceNum = parseFloat(price);
-  const qtyNum = parseFloat(quantity);
-  const priceValid = isMarket || (!isNaN(priceNum) && priceNum > 0 && isValidTick(priceNum, tickSize));
-  const qtyValid = !isNaN(qtyNum) && qtyNum > 0;
+  const priceValid = isMarket || (price !== null && price > 0 && isValidTick(price, tickSize));
+  const qtyValid = quantity !== null && quantity > 0;
   const canSubmit = priceValid && qtyValid && account && !submitting;
+
+  const accountOptions = accounts.map(ac => ({ label: ac.displayAlias ?? ac.account, value: ac.account }));
 
   async function submit(side: 'buy' | 'sell') {
     if (!canSubmit) return;
     setError(null);
     setSubmitting(true);
     try {
-      const body: Record<string, unknown> = { venueId, symbol, side, orderType, quantity: qtyNum, account, traderId };
-      if (!isMarket) body.price = priceNum;
+      const body: Record<string, unknown> = { venueId, symbol, side, orderType, quantity, account, traderId };
+      if (!isMarket && price !== null) body.price = price;
       const res = await fetch('/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -64,75 +73,74 @@ export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.
   }
 
   return (
-    <div style={{ padding: 12, border: '1px solid var(--border-light)', borderRadius: 4, width: 300 }}>
-      <h3 style={{ margin: '0 0 8px' }}>Order Ticket</h3>
+    <div style={{ padding: 12, border: '1px solid var(--border-light)', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <h3 style={{ margin: 0 }}>Order Ticket</h3>
 
-      <label style={{ display: 'block', marginBottom: 6 }}>
-        Instrument
-        <input value={symbol} readOnly style={{ display: 'block', width: '100%', boxSizing: 'border-box' }} />
-      </label>
+      <div className="p-inputgroup">
+        <span className="p-inputgroup-addon">Symbol</span>
+        <InputText value={symbol} readOnly />
+      </div>
 
-      <label style={{ display: 'block', marginBottom: 6 }}>
-        Order Type
-        <select
+      <FloatLabel>
+        <Dropdown
+          inputId="orderType"
           value={orderType}
-          onChange={e => setOrderType(e.target.value as 'limit' | 'market')}
-          style={{ display: 'block', width: '100%', boxSizing: 'border-box' }}
-        >
-          <option value="limit">Limit</option>
-          <option value="market">Market</option>
-        </select>
-      </label>
-
-      <label style={{ display: 'block', marginBottom: 6 }}>
-        Price
-        <input
-          type="number"
-          value={price}
-          onChange={e => setPrice(e.target.value)}
-          step={tickSize}
-          disabled={isMarket}
-          style={{
-            display: 'block', width: '100%', boxSizing: 'border-box',
-            borderColor: !isMarket && price && !priceValid ? 'var(--error)' : undefined,
-            opacity: isMarket ? 0.4 : 1,
-          }}
-          placeholder={isMarket ? 'Market order' : `tick size: ${tickSize}`}
+          options={ORDER_TYPE_OPTIONS}
+          onChange={e => setOrderType(e.value)}
+          style={{ width: '100%' }}
         />
-        {!isMarket && price && !priceValid && (
+        <label htmlFor="orderType">Order Type</label>
+      </FloatLabel>
+
+      <div>
+        <div className="p-inputgroup">
+          <span className="p-inputgroup-addon">Price</span>
+          <InputNumber
+            value={price}
+            onValueChange={e => setPrice(e.value ?? null)}
+            step={tickSize}
+            minFractionDigits={0}
+            maxFractionDigits={10}
+            useGrouping={false}
+            disabled={isMarket}
+            invalid={!isMarket && price !== null && !priceValid}
+            placeholder={isMarket ? 'Market order' : `tick: ${tickSize}`}
+            style={{ flex: 1, opacity: isMarket ? 0.4 : 1 }}
+          />
+        </div>
+        {!isMarket && price !== null && !priceValid && (
           <span style={{ color: 'var(--error)', fontSize: 11 }}>Must be a multiple of {tickSize}</span>
         )}
-      </label>
+      </div>
 
-      <label style={{ display: 'block', marginBottom: 6 }}>
-        Quantity
-        <input
-          type="number"
+      <div className="p-inputgroup">
+        <span className="p-inputgroup-addon">Qty</span>
+        <InputNumber
           value={quantity}
-          onChange={e => setQuantity(e.target.value)}
-          style={{ display: 'block', width: '100%', boxSizing: 'border-box' }}
+          onValueChange={e => setQuantity(e.value ?? null)}
+          min={0}
+          useGrouping={false}
+          style={{ flex: 1 }}
         />
-      </label>
+      </div>
 
-      <label style={{ display: 'block', marginBottom: 6 }}>
-        Account
-        <select
+      <FloatLabel>
+        <Dropdown
+          inputId="account"
           value={account}
-          onChange={e => setAccount(e.target.value)}
-          style={{ display: 'block', width: '100%', boxSizing: 'border-box' }}
-        >
-          {accounts.map(ac => (
-            <option key={ac.id} value={ac.account}>{ac.displayAlias ?? ac.account}</option>
-          ))}
-        </select>
-      </label>
+          options={accountOptions}
+          onChange={e => setAccount(e.value)}
+          style={{ width: '100%' }}
+        />
+        <label htmlFor="account">Account</label>
+      </FloatLabel>
 
-      <label style={{ display: 'block', marginBottom: 10 }}>
-        Trader ID
-        <input value={traderId} readOnly style={{ display: 'block', width: '100%', boxSizing: 'border-box' }} />
-      </label>
+      <div className="p-inputgroup">
+        <span className="p-inputgroup-addon">Trader ID</span>
+        <InputText value={traderId} readOnly />
+      </div>
 
-      {error && <div style={{ color: 'var(--error)', marginBottom: 8, fontSize: 12 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--error)', fontSize: 12 }}>{error}</div>}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button

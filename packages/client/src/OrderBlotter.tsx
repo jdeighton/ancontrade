@@ -1,9 +1,12 @@
-import { AllCommunityModule, ModuleRegistry, themeQuartz } from 'ag-grid-community';
+import { AllCommunityModule, ModuleRegistry, colorSchemeDark, themeBalham } from 'ag-grid-community';
 import type { ColDef } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import type { OrderRecord } from './types.js';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+const THEME_LIGHT = themeBalham;
+const THEME_DARK = themeBalham.withPart(colorSchemeDark);
 
 const CANCELLABLE = new Set(['New', 'PartiallyFilled']);
 
@@ -21,28 +24,40 @@ const ROW_BG: Record<string, string> = {
   Rejected:        'var(--status-rejected-bg)',
 };
 
+function fmtTime(iso: string | undefined): string {
+  if (!iso) return '';
+  return iso.slice(0, 23).replace('T', ' ');
+}
+
 interface Props {
   orders: OrderRecord[];
   onCancelRequest: (clOrdId: string) => void;
   onRowSelected?: (clOrdId: string | null) => void;
   onResetHistory?: () => void;
+  isDark?: boolean;
 }
 
-export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHistory }: Props) {
+export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHistory, isDark = true }: Props) {
+  const gridTheme = isDark ? THEME_DARK : THEME_LIGHT;
+
   const columnDefs: ColDef<OrderRecord>[] = [
-    { field: 'clOrdId',   headerName: 'ClOrdID',      flex: 2 },
-    { field: 'symbol',    headerName: 'Symbol',        flex: 1 },
+    { field: 'clOrdId',  headerName: 'ClOrdID',     flex: 2, filter: 'agTextColumnFilter' },
+    { field: 'symbol',   headerName: 'Symbol',       flex: 1, filter: 'agTextColumnFilter' },
     {
-      field: 'side', headerName: 'Side', flex: 1,
+      field: 'side', headerName: 'Side', flex: 1, filter: 'agTextColumnFilter',
       cellStyle: (p: any) => ({
         color: p.value === 'buy' ? 'var(--buy)' : 'var(--sell)',
         fontWeight: 600,
       }),
     },
-    { valueGetter: (p: any) => p.data.orderType === 'market' ? 'MKT' : p.data.price, headerName: 'Price', flex: 1 },
-    { field: 'quantity',  headerName: 'Qty',           flex: 1 },
     {
-      field: 'status', headerName: 'Status', flex: 1,
+      // Price is 'MKT' for market orders so text filter applies
+      valueGetter: (p: any) => p.data.orderType === 'market' ? 'MKT' : p.data.price,
+      headerName: 'Price', flex: 1, filter: 'agTextColumnFilter',
+    },
+    { field: 'quantity',  headerName: 'Qty',     flex: 1, filter: 'agNumberColumnFilter' },
+    {
+      field: 'status', headerName: 'Status', flex: 1, filter: 'agTextColumnFilter',
       cellStyle: (p: any) => {
         const colors: Record<string, string> = {
           PendingNew:      'var(--status-cancelled)',
@@ -55,9 +70,9 @@ export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHi
         return { color: colors[p.value] };
       },
     },
-    { field: 'filledQty',                                       headerName: 'Filled',     flex: 1 },
-    { valueGetter: (p: any) => p.data.avgFillPrice,            headerName: 'Avg Px',     flex: 1 },
-    { valueGetter: (p: any) => p.data.exchOrdId ?? '',         headerName: 'Exch OrdID', flex: 2 },
+    { field: 'filledQty',                                    headerName: 'Filled',      flex: 1, filter: 'agNumberColumnFilter' },
+    { valueGetter: (p: any) => p.data.avgFillPrice,          headerName: 'Avg Px',      flex: 1, filter: 'agNumberColumnFilter' },
+    { valueGetter: (p: any) => p.data.exchOrdId ?? '',       headerName: 'Exch OrdID',  flex: 2, filter: 'agTextColumnFilter' },
     {
       valueGetter: (p: any) => {
         const o: OrderRecord = p.data;
@@ -65,8 +80,18 @@ export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHi
         const label = o.ordRejReason !== undefined ? (ORD_REJ_REASONS[o.ordRejReason] ?? `Code ${o.ordRejReason}`) : '';
         return o.rejText ? `${label}: ${o.rejText}` : label;
       },
-      headerName: 'Rej Reason', flex: 2,
+      headerName: 'Rej Reason', flex: 2, filter: 'agTextColumnFilter',
       cellStyle: () => ({ color: 'var(--status-rejected)', fontSize: 11 }),
+    },
+    {
+      valueGetter: (p: any) => fmtTime(p.data.entryTime),
+      filterValueGetter: (p: any) => p.data.entryTime ? new Date(p.data.entryTime) : null,
+      headerName: 'Entry Time', flex: 1, filter: 'agDateColumnFilter',
+    },
+    {
+      valueGetter: (p: any) => fmtTime(p.data.lastUpdated),
+      filterValueGetter: (p: any) => p.data.lastUpdated ? new Date(p.data.lastUpdated) : null,
+      headerName: 'Last Updated', flex: 1, filter: 'agDateColumnFilter',
     },
     {
       headerName: '', minWidth: 100, sortable: false, filter: false,
@@ -95,7 +120,7 @@ export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHi
         </div>
       )}
       <AgGridReact
-        theme={themeQuartz}
+        theme={gridTheme}
         rowData={orders}
         columnDefs={columnDefs}
         domLayout="autoHeight"
@@ -106,7 +131,6 @@ export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHi
           return bg ? { background: bg } : undefined;
         }}
         onRowSelected={(e) => {
-          // Only fire on selection (not on deselect) so the events panel stays visible
           if (onRowSelected && e.node.isSelected()) {
             onRowSelected(e.data?.clOrdId ?? null);
           }

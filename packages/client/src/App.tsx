@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Dialog } from 'primereact/dialog';
+import { InputSwitch } from 'primereact/inputswitch';
+import { Splitter, SplitterPanel } from 'primereact/splitter';
 import type { AccountConfig, CancelRejectEvent, Instrument, OrderRecord, PriceLevelsEvent, StatusAlertEvent, TraderIdConfig, Venue, VenueStatus } from './types.js';
 import { OrderTicket } from './OrderTicket.js';
 import { OrderBlotter } from './OrderBlotter.js';
 import { OrderEventsPanel } from './OrderEventsPanel.js';
 import { PriceLadder } from './PriceLadder.js';
 import { StatusBar } from './StatusBar.js';
+import { applyPrimeTheme } from './primeTheme.js';
 
 async function apiFetch<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -48,6 +52,7 @@ export function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
+    applyPrimeTheme(theme);
   }, [theme]);
 
   const refreshOrders = useCallback(() => {
@@ -177,8 +182,6 @@ export function App() {
 
   useEffect(() => {
     if (mdConnected && selectedVenueId) {
-      // Reload instruments whenever MD connects so the dropdown is always populated,
-      // even if the page was reloaded while sessions were already active.
       refreshInstruments(selectedVenueId);
     }
   }, [mdConnected, selectedVenueId, refreshInstruments]);
@@ -188,70 +191,79 @@ export function App() {
       subscribeToSymbol(selectedVenueId, selectedSymbol);
     }
   }, [mdConnected, selectedVenueId, selectedSymbol, subscribeToSymbol]);
+
   const openStatuses = new Set(['PendingNew', 'New', 'PartiallyFilled']);
   const hasOpenOrders = orders.some(o => openStatuses.has(o.status));
+
+  const cancelRejectFooter = (
+    <button onClick={() => setCancelReject(null)}>Dismiss</button>
+  );
+
+  const disconnectFooter = (
+    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+      <button onClick={() => setShowDisconnectConfirm(false)}>Stay connected</button>
+      <button
+        onClick={() => void executeDisconnect()}
+        style={{ background: 'var(--warning-bg)', color: 'var(--warning-text)', border: '1px solid var(--warning-text)', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }}
+      >
+        Disconnect anyway
+      </button>
+    </div>
+  );
 
   return (
     <div style={{ fontFamily: 'sans-serif', padding: 16, display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--bg)', color: 'var(--text)', minHeight: '100vh' }}>
 
       {/* Cancel-reject modal */}
-      {cancelReject && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, padding: 24, minWidth: 360 }}>
-            <h3 style={{ margin: '0 0 12px', color: 'var(--status-rejected)' }}>Cancel Rejected</h3>
-            <table style={{ fontSize: 13, borderCollapse: 'collapse', width: '100%' }}>
-              <tbody>
-                <tr><td style={{ paddingRight: 12, color: 'var(--text-muted)' }}>Symbol</td><td>{cancelReject.order.symbol}</td></tr>
-                <tr><td style={{ color: 'var(--text-muted)' }}>Side</td><td>{cancelReject.order.side}</td></tr>
-                <tr><td style={{ color: 'var(--text-muted)' }}>Qty</td><td>{cancelReject.order.quantity}</td></tr>
-                <tr><td style={{ color: 'var(--text-muted)' }}>Price</td><td>{cancelReject.order.price}</td></tr>
-                <tr><td style={{ color: 'var(--text-muted)' }}>Status</td><td>{cancelReject.order.status}</td></tr>
-                <tr><td style={{ color: 'var(--text-muted)' }}>Reason</td><td>{CXL_REJ_REASONS[cancelReject.cxlRejReason] ?? `Code ${cancelReject.cxlRejReason}`}</td></tr>
-                {cancelReject.text && <tr><td style={{ color: 'var(--text-muted)' }}>Text</td><td>{cancelReject.text}</td></tr>}
-              </tbody>
-            </table>
-            <button onClick={() => setCancelReject(null)} style={{ marginTop: 16 }}>Dismiss</button>
-          </div>
-        </div>
-      )}
+      <Dialog
+        visible={cancelReject !== null}
+        onHide={() => setCancelReject(null)}
+        header={<span style={{ color: 'var(--status-rejected)' }}>Cancel Rejected</span>}
+        footer={cancelRejectFooter}
+        style={{ minWidth: 360 }}
+      >
+        {cancelReject && (
+          <table style={{ fontSize: 13, borderCollapse: 'collapse', width: '100%' }}>
+            <tbody>
+              <tr><td style={{ paddingRight: 12, color: 'var(--text-muted)' }}>Symbol</td><td>{cancelReject.order.symbol}</td></tr>
+              <tr><td style={{ color: 'var(--text-muted)' }}>Side</td><td>{cancelReject.order.side}</td></tr>
+              <tr><td style={{ color: 'var(--text-muted)' }}>Qty</td><td>{cancelReject.order.quantity}</td></tr>
+              <tr><td style={{ color: 'var(--text-muted)' }}>Price</td><td>{cancelReject.order.price}</td></tr>
+              <tr><td style={{ color: 'var(--text-muted)' }}>Status</td><td>{cancelReject.order.status}</td></tr>
+              <tr><td style={{ color: 'var(--text-muted)' }}>Reason</td><td>{CXL_REJ_REASONS[cancelReject.cxlRejReason] ?? `Code ${cancelReject.cxlRejReason}`}</td></tr>
+              {cancelReject.text && <tr><td style={{ color: 'var(--text-muted)' }}>Text</td><td>{cancelReject.text}</td></tr>}
+            </tbody>
+          </table>
+        )}
+      </Dialog>
+
+      {/* Disconnect-with-open-orders confirmation modal */}
+      <Dialog
+        visible={showDisconnectConfirm}
+        onHide={() => setShowDisconnectConfirm(false)}
+        header={<span style={{ color: 'var(--warning-text)' }}>Disconnect with open orders?</span>}
+        footer={disconnectFooter}
+        style={{ minWidth: 360, maxWidth: 440 }}
+      >
+        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
+          You have {orders.filter(o => ['PendingNew', 'New', 'PartiallyFilled'].includes(o.status)).length} open order(s).
+          Disconnecting will leave {orders.filter(o => ['PendingNew', 'New', 'PartiallyFilled'].includes(o.status)).length === 1 ? 'it' : 'them'} working at the exchange with no way to cancel from this session.
+        </p>
+      </Dialog>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>Ancontrade</h2>
-        <button
-          onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
-          style={{ fontSize: 12, padding: '4px 10px' }}
-          title="Toggle light/dark theme"
-        >
-          {theme === 'dark' ? 'Light' : 'Dark'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Dark</span>
+          <InputSwitch
+            checked={theme === 'light'}
+            onChange={e => setTheme(e.value ? 'light' : 'dark')}
+          />
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Light</span>
+        </div>
       </div>
 
-      {/* Disconnect-with-open-orders confirmation modal */}
-      {showDisconnectConfirm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, padding: 24, minWidth: 360, maxWidth: 440 }}>
-            <h3 style={{ margin: '0 0 12px', color: 'var(--warning-text)' }}>Disconnect with open orders?</h3>
-            <p style={{ margin: '0 0 16px', fontSize: 13, lineHeight: 1.5 }}>
-              You have {orders.filter(o => ['PendingNew', 'New', 'PartiallyFilled'].includes(o.status)).length} open order(s).
-              Disconnecting will leave {orders.filter(o => ['PendingNew', 'New', 'PartiallyFilled'].includes(o.status)).length === 1 ? 'it' : 'them'} working at the exchange with no way to cancel from this session.
-            </p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowDisconnectConfirm(false)}>
-                Stay connected
-              </button>
-              <button
-                onClick={() => void executeDisconnect()}
-                style={{ background: 'var(--warning-bg)', color: 'var(--warning-text)', border: '1px solid var(--warning-text)', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }}
-              >
-                Disconnect anyway
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <StatusBar alerts={statusAlerts} />
-
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <label>
@@ -295,32 +307,41 @@ export function App() {
                   Subscribe
                 </button>
           )}
-
         </div>
       )}
 
       {venue && (
-        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-          <OrderTicket
-            venueId={selectedVenueId}
-            symbol={selectedSymbol || 'N/A'}
-            tickSize={instruments.find(i => i.symbol === selectedSymbol)?.tickSize}
-            accounts={venueAccounts}
-            traderId={venueTraderId}
-            priceOverride={priceOverride}
-            onSubmitted={refreshOrders}
-          />
-          <PriceLadder
-            data={priceLevels?.symbol === selectedSymbol ? priceLevels : null}
-            onPriceClick={setPriceOverride}
-          />
-          <div style={{ flex: 1 }}>
-            <OrderBlotter orders={orders} onCancelRequest={handleCancelRequest} onRowSelected={setSelectedClOrdId} onResetHistory={handleResetHistory} />
+        <Splitter style={{ width: '100%', border: 'none', background: 'transparent' }}>
+          <SplitterPanel size={22} minSize={15} style={{ overflow: 'auto' }}>
+            <OrderTicket
+              venueId={selectedVenueId}
+              symbol={selectedSymbol || 'N/A'}
+              tickSize={instruments.find(i => i.symbol === selectedSymbol)?.tickSize}
+              accounts={venueAccounts}
+              traderId={venueTraderId}
+              priceOverride={priceOverride}
+              onSubmitted={refreshOrders}
+            />
+          </SplitterPanel>
+          <SplitterPanel size={16} minSize={12} style={{ overflow: 'auto' }}>
+            <PriceLadder
+              data={priceLevels?.symbol === selectedSymbol ? priceLevels : null}
+              onPriceClick={setPriceOverride}
+            />
+          </SplitterPanel>
+          <SplitterPanel size={62} minSize={30} style={{ overflow: 'auto' }}>
+            <OrderBlotter
+              orders={orders}
+              onCancelRequest={handleCancelRequest}
+              onRowSelected={setSelectedClOrdId}
+              onResetHistory={handleResetHistory}
+              isDark={theme === 'dark'}
+            />
             <div style={{ marginTop: 16 }}>
-              <OrderEventsPanel clOrdId={selectedClOrdId} />
+              <OrderEventsPanel clOrdId={selectedClOrdId} isDark={theme === 'dark'} />
             </div>
-          </div>
-        </div>
+          </SplitterPanel>
+        </Splitter>
       )}
     </div>
   );

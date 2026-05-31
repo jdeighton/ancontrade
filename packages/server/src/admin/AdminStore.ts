@@ -50,6 +50,8 @@ export interface OrderRecord {
   traderId: string;
   status: OrderStatus;
   filledQty: number;
+  entryTime?: string;
+  lastUpdated?: string;
   exchOrdId?: string;
   avgFillPrice?: number;
   ordRejReason?: number;
@@ -117,6 +119,8 @@ export class AdminStore {
     try { this.db.exec('ALTER TABLE orders ADD COLUMN ord_rej_reason INTEGER'); } catch {}
     try { this.db.exec('ALTER TABLE orders ADD COLUMN rej_text TEXT'); } catch {}
     try { this.db.exec("ALTER TABLE orders ADD COLUMN order_type TEXT NOT NULL DEFAULT 'limit'"); } catch {}
+    try { this.db.exec('ALTER TABLE orders ADD COLUMN entry_time TEXT'); } catch {}
+    try { this.db.exec('ALTER TABLE orders ADD COLUMN last_updated TEXT'); } catch {}
   }
 
   // ─── Session Configs ──────────────────────────────────────────────────────
@@ -274,11 +278,12 @@ export class AdminStore {
 
   // ─── Orders ───────────────────────────────────────────────────────────────
 
-  createOrder(data: Omit<OrderRecord, 'status' | 'filledQty'>): OrderRecord {
-    const record: OrderRecord = { ...data, status: 'PendingNew', filledQty: 0 };
+  createOrder(data: Omit<OrderRecord, 'status' | 'filledQty' | 'entryTime' | 'lastUpdated'>): OrderRecord {
+    const entryTime = new Date().toISOString();
+    const record: OrderRecord = { ...data, status: 'PendingNew', filledQty: 0, entryTime };
     this.db.prepare(
-      'INSERT INTO orders (cl_ord_id, venue_id, symbol, side, price, quantity, account, trader_id, status, filled_qty, order_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(record.clOrdId, record.venueId, record.symbol, record.side, record.price, record.quantity, record.account, record.traderId, record.status, record.filledQty, record.orderType);
+      'INSERT INTO orders (cl_ord_id, venue_id, symbol, side, price, quantity, account, trader_id, status, filled_qty, order_type, entry_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(record.clOrdId, record.venueId, record.symbol, record.side, record.price, record.quantity, record.account, record.traderId, record.status, record.filledQty, record.orderType, entryTime);
     return record;
   }
 
@@ -291,18 +296,19 @@ export class AdminStore {
     return row ? rowToOrder(row) : undefined;
   }
 
-  updateOrderStatus(clOrdId: string, patch: { status: OrderStatus; filledQty?: number; exchOrdId?: string; avgFillPrice?: number; ordRejReason?: number; rejText?: string }): OrderRecord {
+  updateOrderStatus(clOrdId: string, patch: { status: OrderStatus; filledQty?: number; exchOrdId?: string; avgFillPrice?: number; ordRejReason?: number; rejText?: string; transactTime?: string }): OrderRecord {
     const existing = this.getOrder(clOrdId);
     if (!existing) throw new Error(`Order ${clOrdId} not found`);
+    const lastUpdated = patch.transactTime ?? new Date().toISOString();
     const filledQty = patch.filledQty ?? existing.filledQty;
     const exchOrdId = patch.exchOrdId ?? existing.exchOrdId ?? null;
     const avgFillPrice = patch.avgFillPrice ?? existing.avgFillPrice ?? null;
     const ordRejReason = patch.ordRejReason ?? existing.ordRejReason ?? null;
     const rejText = patch.rejText ?? existing.rejText ?? null;
-    this.db.prepare('UPDATE orders SET status=?, filled_qty=?, exch_ord_id=?, avg_fill_price=?, ord_rej_reason=?, rej_text=? WHERE cl_ord_id=?')
-      .run(patch.status, filledQty, exchOrdId, avgFillPrice, ordRejReason, rejText, clOrdId);
+    this.db.prepare('UPDATE orders SET status=?, filled_qty=?, exch_ord_id=?, avg_fill_price=?, ord_rej_reason=?, rej_text=?, last_updated=? WHERE cl_ord_id=?')
+      .run(patch.status, filledQty, exchOrdId, avgFillPrice, ordRejReason, rejText, lastUpdated, clOrdId);
     return {
-      ...existing, status: patch.status, filledQty,
+      ...existing, status: patch.status, filledQty, lastUpdated,
       exchOrdId: exchOrdId ?? undefined, avgFillPrice: avgFillPrice ?? undefined,
       ordRejReason: ordRejReason ?? undefined, rejText: rejText ?? undefined,
     };
@@ -373,6 +379,8 @@ function rowToOrder(row: any): OrderRecord {
     traderId: row.trader_id,
     status: row.status as OrderStatus,
     filledQty: row.filled_qty,
+    ...(row.entry_time     != null && { entryTime: row.entry_time }),
+    ...(row.last_updated   != null && { lastUpdated: row.last_updated }),
     ...(row.exch_ord_id    != null && { exchOrdId: row.exch_ord_id }),
     ...(row.avg_fill_price != null && { avgFillPrice: row.avg_fill_price }),
     ...(row.ord_rej_reason != null && { ordRejReason: row.ord_rej_reason }),
