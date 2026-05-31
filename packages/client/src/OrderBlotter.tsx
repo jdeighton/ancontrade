@@ -69,7 +69,7 @@ export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHi
       cellStyle: () => ({ color: 'var(--status-rejected)', fontSize: 11 }),
     },
     {
-      headerName: '', width: 80, sortable: false, filter: false,
+      headerName: '', minWidth: 100, sortable: false, filter: false,
       cellRenderer: (p: any) => {
         const canCancel = CANCELLABLE.has(p.data.status);
         return (
