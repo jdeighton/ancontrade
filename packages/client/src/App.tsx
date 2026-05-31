@@ -252,11 +252,6 @@ export function App() {
 
       <StatusBar alerts={statusAlerts} />
 
-      {orConnected && hasOpenOrders && (
-        <div style={{ padding: '8px 12px', background: 'var(--warning-bg)', color: 'var(--warning-text)', borderRadius: 4, fontSize: 13 }}>
-          Open orders will remain working at the exchange if you disconnect.
-        </div>
-      )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <label>
@@ -267,16 +262,12 @@ export function App() {
         </label>
         <button onClick={handleConnect}>Connect</button>
         <button onClick={handleDisconnect}>Disconnect</button>
-        {venueStatus && (
-          <>
-            <span style={{ fontSize: 12, color: orConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
-              OR: {orConnected ? 'Connected' : 'Disconnected'}
-            </span>
-            <span style={{ fontSize: 12, color: mdConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
-              MD: {mdConnected ? 'Connected' : 'Disconnected'}
-            </span>
-          </>
-        )}
+        <span style={{ fontSize: 12, color: orConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
+          OR: {orConnected ? 'Connected' : 'Disconnected'}
+        </span>
+        <span style={{ fontSize: 12, color: mdConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
+          MD: {mdConnected ? 'Connected' : 'Disconnected'}
+        </span>
       </div>
 
       {instruments.length > 0 && (
@@ -304,9 +295,7 @@ export function App() {
                   Subscribe
                 </button>
           )}
-          {!mdConnected && selectedSymbol && (
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>MD not connected</span>
-          )}
+
         </div>
       )}
 
