@@ -1,7 +1,7 @@
 import { buildServer } from './server.js';
 import { NoopFIXEngine } from './venue/NoopFIXEngine.js';
 
-const app = buildServer(':memory:', new NoopFIXEngine());
+const app = await buildServer(':memory:', new NoopFIXEngine());
 
 try {
   await app.listen({ port: 3001, host: '0.0.0.0' });

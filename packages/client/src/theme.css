@@ -12,6 +12,11 @@
   --status-filled: #1a7f1a;
   --status-cancelled: #888;
   --status-rejected: #c0392b;
+  --status-pending-bg: rgba(136, 136, 136, 0.07);
+  --status-partial-bg: rgba(240, 165,   0, 0.12);
+  --status-filled-bg:  rgba( 26, 127,  26, 0.12);
+  --status-cancelled-bg: rgba(136, 136, 136, 0.04);
+  --status-rejected-bg: rgba(192,  57,  43, 0.12);
   --buy: #1a7f1a;
   --sell: #c0392b;
   --error: #c0392b;
@@ -31,6 +36,11 @@
   --status-filled: #196b19;
   --status-cancelled: #666666;
   --status-rejected: #c0392b;
+  --status-pending-bg: rgba(136, 136, 136, 0.06);
+  --status-partial-bg: rgba(184, 117,   0, 0.09);
+  --status-filled-bg:  rgba( 25, 107,  25, 0.09);
+  --status-cancelled-bg: rgba(136, 136, 136, 0.04);
+  --status-rejected-bg: rgba(192,  57,  43, 0.09);
   --buy: #196b19;
   --sell: #c0392b;
   --error: #c0392b;

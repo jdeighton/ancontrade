@@ -17,6 +17,7 @@ export function registerInstrumentRoutes(app: FastifyInstance, vm: VenueManager,
     const instrument = instruments.find(i => i.symbol === symbol);
     if (!instrument) return reply.code(404).send({ error: 'Instrument not found' });
     mdm.subscribe(sessionId, symbol, instrument.tickSize);
+    mdm.emitCurrentLevels(symbol);
     reply.code(204);
   });
 

@@ -41,7 +41,7 @@ class StubFIXEngine implements IFIXEngine {
 
 async function makeConnectedServer() {
   const engine = new StubFIXEngine();
-  const app = buildServer(':memory:', engine);
+  const app = await buildServer(':memory:', engine);
 
   // Create minimal admin config
   let res = await app.inject({ method: 'POST', url: '/admin/session-configs', body: { name: 'MD', host: '127.0.0.1', port: 9001, senderCompId: 'CLI', targetCompId: 'MD_EXCH' } });

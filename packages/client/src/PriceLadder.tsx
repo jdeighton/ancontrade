@@ -49,7 +49,7 @@ export function PriceLadder({ data, onDepthChange }: Props) {
   const thStyle: React.CSSProperties = { textAlign: 'right', paddingRight: 8, color: 'var(--text-muted)', fontWeight: 400, fontSize: 11, paddingBottom: 4 };
 
   return (
-    <div style={{ minWidth: 220 }}>
+    <div style={{ minWidth: 220, border: '1px solid var(--border-light)', borderRadius: 4, padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <h3 style={{ margin: 0 }}>Price Ladder</h3>
         <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>

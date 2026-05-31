@@ -37,7 +37,7 @@ class StubFIXEngine implements IFIXEngine {
 
 async function makeConnectedServer(dbPath = ':memory:') {
   const engine = new StubFIXEngine();
-  const app = buildServer(dbPath, engine);
+  const app = await buildServer(dbPath, engine);
 
   let res = await app.inject({ method: 'POST', url: '/admin/session-configs', body: { name: 'MD', host: '127.0.0.1', port: 9001, senderCompId: 'CLI', targetCompId: 'MD_EXCH' } });
   const mdSC = res.json();

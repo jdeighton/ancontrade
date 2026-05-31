@@ -57,6 +57,11 @@ export class MarketDataManager {
     this.depth = Math.min(20, Math.max(1, n));
   }
 
+  emitCurrentLevels(symbol: string): void {
+    const sub = this.subscriptions.get(symbol);
+    if (sub) this.emit(sub);
+  }
+
   onPriceLevels(cb: (e: PriceLevelsEvent) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);

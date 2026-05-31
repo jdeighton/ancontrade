@@ -55,7 +55,12 @@ export class VenueManager {
   }
 
   connect(venueId: string): void {
-    if (this.active.has(venueId)) return;
+    if (this.active.has(venueId)) {
+      // Re-emit current status so a freshly reconnected WebSocket client gets the state.
+      const pair = this.active.get(venueId)!;
+      this.emit(venueId, { mdConnected: pair.mdConnected, orConnected: pair.orConnected });
+      return;
+    }
 
     const venue = this.store.getVenue(venueId);
     if (!venue) throw new Error(`Venue ${venueId} not found`);
@@ -155,6 +160,14 @@ export class VenueManager {
     const pair = this.active.get(venueId);
     if (!pair) throw new Error(`Venue ${venueId} is not connected`);
     this.engine.sendMessage(pair.orSession.id, fields);
+  }
+
+  getAllStatuses(): VenueStatus[] {
+    const out: VenueStatus[] = [];
+    for (const [venueId, pair] of this.active) {
+      out.push({ venueId, mdConnected: pair.mdConnected, orConnected: pair.orConnected });
+    }
+    return out;
   }
 
   onStatusChange(callback: (s: VenueStatus) => void): () => void {

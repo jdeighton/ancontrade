@@ -39,6 +39,8 @@ export function App() {
   const [priceLevels, setPriceLevels] = useState<PriceLevelsEvent | null>(null);
   const [statusAlerts, setStatusAlerts] = useState<StatusAlertEvent[]>([]);
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
+  const [subscribedSymbol, setSubscribedSymbol] = useState<string | null>(null);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const subscribedSymbolRef = useRef<string | null>(null);
 
@@ -121,15 +123,26 @@ export function App() {
     refreshInstruments(selectedVenueId);
   }
 
-  async function handleDisconnect() {
+  async function executeDisconnect() {
+    setShowDisconnectConfirm(false);
     if (!selectedVenueId) return;
     if (subscribedSymbolRef.current) {
       const sym = encodeURIComponent(subscribedSymbolRef.current);
       await fetch(`/venues/${selectedVenueId}/instruments/${sym}/unsubscribe`, { method: 'POST' });
       subscribedSymbolRef.current = null;
+      setSubscribedSymbol(null);
       setPriceLevels(null);
     }
     await fetch(`/venues/${selectedVenueId}/disconnect`, { method: 'POST' });
+  }
+
+  function handleDisconnect() {
+    if (!selectedVenueId) return;
+    if (hasOpenOrders) {
+      setShowDisconnectConfirm(true);
+    } else {
+      void executeDisconnect();
+    }
   }
 
   const subscribeToSymbol = useCallback(async (venueId: string, symbol: string) => {
@@ -139,6 +152,7 @@ export function App() {
       await fetch(`/venues/${venueId}/instruments/${prev}/unsubscribe`, { method: 'POST' }).catch(() => {});
     }
     subscribedSymbolRef.current = symbol;
+    setSubscribedSymbol(symbol);
     setPriceLevels(null);
     await fetch(`/venues/${venueId}/instruments/${encodeURIComponent(symbol)}/subscribe`, { method: 'POST' }).catch(console.error);
   }, []);
@@ -150,11 +164,23 @@ export function App() {
   }
 
   async function handleCancelRequest(clOrdId: string) {
-    await fetch(`/orders/${clOrdId}`, { method: 'DELETE' });
+    const res = await fetch(`/orders/${clOrdId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      alert(`Cancel failed: ${body.error ?? res.status}`);
+    }
   }
 
   const orConnected = venueStatus?.venueId === selectedVenueId && venueStatus.orConnected;
   const mdConnected = venueStatus?.venueId === selectedVenueId && venueStatus.mdConnected;
+
+  useEffect(() => {
+    if (mdConnected && selectedVenueId) {
+      // Reload instruments whenever MD connects so the dropdown is always populated,
+      // even if the page was reloaded while sessions were already active.
+      refreshInstruments(selectedVenueId);
+    }
+  }, [mdConnected, selectedVenueId, refreshInstruments]);
 
   useEffect(() => {
     if (mdConnected && selectedVenueId && selectedSymbol) {
@@ -199,11 +225,35 @@ export function App() {
         </button>
       </div>
 
+      {/* Disconnect-with-open-orders confirmation modal */}
+      {showDisconnectConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, padding: 24, minWidth: 360, maxWidth: 440 }}>
+            <h3 style={{ margin: '0 0 12px', color: 'var(--warning-text)' }}>Disconnect with open orders?</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 13, lineHeight: 1.5 }}>
+              You have {orders.filter(o => ['PendingNew', 'New', 'PartiallyFilled'].includes(o.status)).length} open order(s).
+              Disconnecting will leave {orders.filter(o => ['PendingNew', 'New', 'PartiallyFilled'].includes(o.status)).length === 1 ? 'it' : 'them'} working at the exchange with no way to cancel from this session.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowDisconnectConfirm(false)}>
+                Stay connected
+              </button>
+              <button
+                onClick={() => void executeDisconnect()}
+                style={{ background: 'var(--warning-bg)', color: 'var(--warning-text)', border: '1px solid var(--warning-text)', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }}
+              >
+                Disconnect anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <StatusBar alerts={statusAlerts} />
 
       {orConnected && hasOpenOrders && (
         <div style={{ padding: '8px 12px', background: 'var(--warning-bg)', color: 'var(--warning-text)', borderRadius: 4, fontSize: 13 }}>
-          Warning: you have open orders. Disconnecting will leave them working in the exchange.
+          Open orders will remain working at the exchange if you disconnect.
         </div>
       )}
 
@@ -217,9 +267,14 @@ export function App() {
         <button onClick={handleConnect}>Connect</button>
         <button onClick={handleDisconnect}>Disconnect</button>
         {venueStatus && (
-          <span style={{ fontSize: 12, color: orConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
-            OR: {orConnected ? 'Connected' : 'Disconnected'}
-          </span>
+          <>
+            <span style={{ fontSize: 12, color: orConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
+              OR: {orConnected ? 'Connected' : 'Disconnected'}
+            </span>
+            <span style={{ fontSize: 12, color: mdConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
+              MD: {mdConnected ? 'Connected' : 'Disconnected'}
+            </span>
+          </>
         )}
       </div>
 
@@ -238,6 +293,19 @@ export function App() {
               tick: {instruments.find(i => i.symbol === selectedSymbol)!.tickSize}
             </span>
           )}
+          {mdConnected && selectedSymbol && (
+            subscribedSymbol === selectedSymbol
+              ? <span style={{ fontSize: 12, color: 'var(--status-filled)' }}>● Subscribed</span>
+              : <button
+                  style={{ fontSize: 12, padding: '2px 8px' }}
+                  onClick={() => subscribeToSymbol(selectedVenueId, selectedSymbol)}
+                >
+                  Subscribe
+                </button>
+          )}
+          {!mdConnected && selectedSymbol && (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>MD not connected</span>
+          )}
         </div>
       )}
 
@@ -253,12 +321,7 @@ export function App() {
           />
           <PriceLadder data={priceLevels?.symbol === selectedSymbol ? priceLevels : null} />
           <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-              <button onClick={handleResetHistory} style={{ fontSize: 12, color: 'var(--error)' }}>
-                Reset History
-              </button>
-            </div>
-            <OrderBlotter orders={orders} onCancelRequest={handleCancelRequest} onRowSelected={setSelectedClOrdId} />
+            <OrderBlotter orders={orders} onCancelRequest={handleCancelRequest} onRowSelected={setSelectedClOrdId} onResetHistory={handleResetHistory} />
             <div style={{ marginTop: 16 }}>
               <OrderEventsPanel clOrdId={selectedClOrdId} />
             </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AllCommunityModule, ModuleRegistry, themeQuartz } from 'ag-grid-community';
 import type { ColDef } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
@@ -40,23 +40,20 @@ interface Props {
 export function OrderEventsPanel({ clOrdId }: Props) {
   const [entries, setEntries] = useState<FIXLogEntry[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<FIXLogEntry | null>(null);
-  const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
-  if (clOrdId && clOrdId !== loadedFor) {
-    setLoadedFor(clOrdId);
+  useEffect(() => {
     setSelectedEntry(null);
+    if (!clOrdId) {
+      setEntries([]);
+      return;
+    }
     fetch(`/orders/${clOrdId}/events`)
       .then(r => r.json())
       .then((data: FIXLogEntry[]) => setEntries(data))
       .catch(console.error);
-  }
+  }, [clOrdId]);
 
   if (!clOrdId) {
-    if (loadedFor !== null) {
-      setEntries([]);
-      setLoadedFor(null);
-      setSelectedEntry(null);
-    }
     return (
       <div style={{ padding: '12px 0', color: 'var(--text-muted)', fontSize: 13 }}>
         Select an order row to view FIX message events.

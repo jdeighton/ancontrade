@@ -12,9 +12,9 @@ import { FIXMessageLog } from './fix/FIXMessageLog.js';
 import { LoggingFIXEngine } from './fix/LoggingFIXEngine.js';
 import { MarketDataManager, type StatusAlertEvent } from './marketdata/MarketDataManager.js';
 
-export function buildServer(dbPath = ':memory:', engine?: IFIXEngine, logDir: string | null = null) {
+export async function buildServer(dbPath = ':memory:', engine?: IFIXEngine, logDir: string | null = null) {
   const app = Fastify({ logger: false });
-  void app.register(websocket);
+  await app.register(websocket);
 
   const adminStore = new AdminStore(dbPath);
   const fixLog = new FIXMessageLog(logDir);
@@ -48,6 +48,12 @@ export function buildServer(dbPath = ':memory:', engine?: IFIXEngine, logDir: st
 
   // WebSocket push: venue status + order updates + cancel rejects + price levels + alerts
   app.get('/ws', { websocket: true }, (socket) => {
+    // Push current state to the newly connected client so it doesn't have to wait for the
+    // next change event (handles page reloads while sessions are already active).
+    for (const status of venueManager.getAllStatuses()) {
+      socket.send(JSON.stringify({ type: 'venue-status', payload: status }));
+    }
+
     const unsubVenue = venueManager.onStatusChange((status) => {
       socket.send(JSON.stringify({ type: 'venue-status', payload: status }));
     });
