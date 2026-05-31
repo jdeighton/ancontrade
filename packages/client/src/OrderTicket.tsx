@@ -52,7 +52,7 @@ export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.
   }
 
   return (
-    <div style={{ padding: 12, border: '1px solid #444', borderRadius: 4, width: 300 }}>
+    <div style={{ padding: 12, border: '1px solid var(--border-light)', borderRadius: 4, width: 300 }}>
       <h3 style={{ margin: '0 0 8px' }}>Order Ticket</h3>
 
       <label style={{ display: 'block', marginBottom: 6 }}>
@@ -72,11 +72,11 @@ export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.
           value={price}
           onChange={e => setPrice(e.target.value)}
           step={tickSize}
-          style={{ display: 'block', width: '100%', boxSizing: 'border-box', borderColor: price && !priceValid ? 'red' : undefined }}
+          style={{ display: 'block', width: '100%', boxSizing: 'border-box', borderColor: price && !priceValid ? 'var(--error)' : undefined }}
           placeholder={`tick size: ${tickSize}`}
         />
         {price && !priceValid && (
-          <span style={{ color: 'red', fontSize: 11 }}>Must be a multiple of {tickSize}</span>
+          <span style={{ color: 'var(--error)', fontSize: 11 }}>Must be a multiple of {tickSize}</span>
         )}
       </label>
 
@@ -108,20 +108,20 @@ export function OrderTicket({ venueId, symbol, accounts, traderId, tickSize = 0.
         <input value={traderId} readOnly style={{ display: 'block', width: '100%', boxSizing: 'border-box' }} />
       </label>
 
-      {error && <div style={{ color: 'red', marginBottom: 8, fontSize: 12 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--error)', marginBottom: 8, fontSize: 12 }}>{error}</div>}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button
           onClick={() => submit('buy')}
           disabled={!canSubmit}
-          style={{ flex: 1, padding: '8px 0', background: '#1a7f1a', color: 'white', border: 'none', borderRadius: 3, cursor: canSubmit ? 'pointer' : 'not-allowed', opacity: canSubmit ? 1 : 0.5 }}
+          style={{ flex: 1, padding: '8px 0', background: 'var(--buy)', color: 'white', border: 'none', borderRadius: 3, cursor: canSubmit ? 'pointer' : 'not-allowed', opacity: canSubmit ? 1 : 0.5 }}
         >
           BUY
         </button>
         <button
           onClick={() => submit('sell')}
           disabled={!canSubmit}
-          style={{ flex: 1, padding: '8px 0', background: '#c0392b', color: 'white', border: 'none', borderRadius: 3, cursor: canSubmit ? 'pointer' : 'not-allowed', opacity: canSubmit ? 1 : 0.5 }}
+          style={{ flex: 1, padding: '8px 0', background: 'var(--sell)', color: 'white', border: 'none', borderRadius: 3, cursor: canSubmit ? 'pointer' : 'not-allowed', opacity: canSubmit ? 1 : 0.5 }}
         >
           SELL
         </button>

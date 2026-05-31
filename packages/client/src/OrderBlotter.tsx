@@ -27,11 +27,12 @@ export function OrderBlotter({ orders, onCancelRequest }: Props) {
     { field: 'quantity',  headerName: 'Qty',           flex: 1 },
     { field: 'status',    headerName: 'Status',        flex: 1,
       cellStyle: (p: any) => {
-        const colors: Record<string, string> = {
-          PendingNew: '#888', New: '#fff', PartiallyFilled: '#f0a500',
-          Filled: '#1a7f1a', Cancelled: '#888', Rejected: '#c0392b',
+        const vars: Record<string, string> = {
+          PendingNew: 'var(--status-cancelled)', New: 'var(--status-new)',
+          PartiallyFilled: 'var(--status-partial)', Filled: 'var(--status-filled)',
+          Cancelled: 'var(--status-cancelled)', Rejected: 'var(--status-rejected)',
         };
-        return { color: colors[p.value] };
+        return { color: vars[p.value] };
       },
     },
     { field: 'filledQty',                                       headerName: 'Filled',     flex: 1 },
@@ -45,7 +46,7 @@ export function OrderBlotter({ orders, onCancelRequest }: Props) {
         return o.rejText ? `${label}: ${o.rejText}` : label;
       },
       headerName: 'Rej Reason', flex: 2,
-      cellStyle: () => ({ color: '#c0392b', fontSize: 11 }),
+      cellStyle: () => ({ color: 'var(--status-rejected)', fontSize: 11 }),
     },
     {
       headerName: '', width: 80, sortable: false, filter: false,

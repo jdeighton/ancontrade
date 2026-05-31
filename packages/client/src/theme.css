@@ -1,0 +1,43 @@
+:root {
+  --bg: #121212;
+  --surface: #1e1e1e;
+  --border: #555;
+  --border-light: #444;
+  --text: #e8e8e8;
+  --text-muted: #888;
+  --warning-bg: #7a4f00;
+  --warning-text: #ffd580;
+  --status-new: #e8e8e8;
+  --status-partial: #f0a500;
+  --status-filled: #1a7f1a;
+  --status-cancelled: #888;
+  --status-rejected: #c0392b;
+  --buy: #1a7f1a;
+  --sell: #c0392b;
+  --error: #c0392b;
+}
+
+[data-theme="light"] {
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --border: #ccc;
+  --border-light: #ddd;
+  --text: #111111;
+  --text-muted: #666666;
+  --warning-bg: #fff3cd;
+  --warning-text: #664d03;
+  --status-new: #111111;
+  --status-partial: #b87500;
+  --status-filled: #196b19;
+  --status-cancelled: #666666;
+  --status-rejected: #c0392b;
+  --buy: #196b19;
+  --sell: #c0392b;
+  --error: #c0392b;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  margin: 0;
+}
