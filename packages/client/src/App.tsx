@@ -3,6 +3,8 @@ import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { FloatLabel } from 'primereact/floatlabel';
+import { Menubar } from 'primereact/menubar';
+import type { MenuItem } from 'primereact/menuitem';
 import { Splitter, SplitterPanel } from 'primereact/splitter';
 import { Toolbar } from 'primereact/toolbar';
 import type { AccountConfig, CancelRejectEvent, Instrument, OrderRecord, PriceLevelsEvent, StatusAlertEvent, TraderIdConfig, Venue, VenueStatus } from './types.js';
@@ -47,12 +49,21 @@ function getInitialFontSize(): number {
   return n >= 10 && n <= 20 ? n : 13;
 }
 
+function venuesMenuColour(venues: Venue[], statuses: Record<string, VenueStatus>): string {
+  if (venues.length === 0) return 'grey';
+  const allFull = venues.every(v => statuses[v.id]?.mdConnected && statuses[v.id]?.orConnected);
+  const noneAny = venues.every(v => !statuses[v.id]?.mdConnected && !statuses[v.id]?.orConnected);
+  if (allFull) return 'var(--status-filled)';
+  if (noneAny) return 'var(--status-rejected)';
+  return 'var(--status-partial)';
+}
+
 export function App() {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [accountConfigs, setAccountConfigs] = useState<AccountConfig[]>([]);
   const [traderIdConfigs, setTraderIdConfigs] = useState<TraderIdConfig[]>([]);
   const [selectedVenueId, setSelectedVenueId] = useState('');
-  const [venueStatus, setVenueStatus] = useState<VenueStatus | null>(null);
+  const [venueStatuses, setVenueStatuses] = useState<Record<string, VenueStatus>>({});
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState('');
@@ -64,11 +75,13 @@ export function App() {
   const [subscribedSymbol, setSubscribedSymbol] = useState<string | null>(null);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showVenues, setShowVenues] = useState(false);
   const [blotterFilter, setBlotterFilter] = useState<BlotterFilter>('All');
   const [priceLadderFontSize, setPriceLadderFontSize] = useState<number>(getInitialFontSize);
   const [priceOverride, setPriceOverride] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const subscribedSymbolRef = useRef<string | null>(null);
+  const pendingDisconnectVenueRef = useRef<string>('');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -118,7 +131,7 @@ export function App() {
       const msg = JSON.parse(e.data) as { type: string; payload: any };
       if (msg.type === 'venue-status') {
         const status = msg.payload as VenueStatus;
-        setVenueStatus(v => (v?.venueId === status.venueId || !v) ? status : v);
+        setVenueStatuses(prev => ({ ...prev, [status.venueId]: status }));
       } else if (msg.type === 'order-update') {
         const updated = msg.payload as OrderRecord;
         setOrders(prev => {
@@ -152,6 +165,10 @@ export function App() {
     ? (traderIdConfigs.find(tr => tr.id === venue.traderIdConfigId)?.traderId ?? '')
     : '';
 
+  const activeStatus = venueStatuses[selectedVenueId];
+  const orConnected = activeStatus?.orConnected ?? false;
+  const mdConnected = activeStatus?.mdConnected ?? false;
+
   const refreshInstruments = useCallback((venueId: string) => {
     apiFetch<Instrument[]>(`/venues/${venueId}/instruments`)
       .then(instrs => {
@@ -161,28 +178,31 @@ export function App() {
       .catch(console.error);
   }, []);
 
-  async function handleConnect() {
-    if (!selectedVenueId) return;
-    await fetch(`/venues/${selectedVenueId}/connect`, { method: 'POST' });
-    refreshInstruments(selectedVenueId);
+  async function handleConnect(venueId: string) {
+    await fetch(`/venues/${venueId}/connect`, { method: 'POST' });
   }
 
   async function executeDisconnect() {
+    const venueId = pendingDisconnectVenueRef.current;
     setShowDisconnectConfirm(false);
-    if (!selectedVenueId) return;
-    if (subscribedSymbolRef.current) {
+    if (!venueId) return;
+    if (venueId === selectedVenueId && subscribedSymbolRef.current) {
       const sym = encodeURIComponent(subscribedSymbolRef.current);
-      await fetch(`/venues/${selectedVenueId}/instruments/${sym}/unsubscribe`, { method: 'POST' });
+      await fetch(`/venues/${venueId}/instruments/${sym}/unsubscribe`, { method: 'POST' });
       subscribedSymbolRef.current = null;
       setSubscribedSymbol(null);
       setPriceLevels(null);
     }
-    await fetch(`/venues/${selectedVenueId}/disconnect`, { method: 'POST' });
+    await fetch(`/venues/${venueId}/disconnect`, { method: 'POST' });
   }
 
-  function handleDisconnect() {
-    if (!selectedVenueId) return;
-    if (hasOpenOrders) {
+  const openStatuses = new Set(['PendingNew', 'New', 'PartiallyFilled']);
+  const hasOpenOrders = orders.some(o => openStatuses.has(o.status));
+
+  function handleDisconnect(venueId: string) {
+    if (!venueId) return;
+    pendingDisconnectVenueRef.current = venueId;
+    if (venueId === selectedVenueId && hasOpenOrders) {
       setShowDisconnectConfirm(true);
     } else {
       void executeDisconnect();
@@ -231,9 +251,6 @@ export function App() {
     URL.revokeObjectURL(a.href);
   }
 
-  const orConnected = venueStatus?.venueId === selectedVenueId && venueStatus.orConnected;
-  const mdConnected = venueStatus?.venueId === selectedVenueId && venueStatus.mdConnected;
-
   useEffect(() => {
     if (mdConnected && selectedVenueId) {
       refreshInstruments(selectedVenueId);
@@ -246,12 +263,35 @@ export function App() {
     }
   }, [mdConnected, selectedVenueId, selectedSymbol, subscribeToSymbol]);
 
-  const openStatuses = new Set(['PendingNew', 'New', 'PartiallyFilled']);
-  const hasOpenOrders = orders.some(o => openStatuses.has(o.status));
+  // ─── Menubar ──────────────────────────────────────────────────────────────
 
-  const cancelRejectFooter = (
-    <button onClick={() => setCancelReject(null)}>Dismiss</button>
+  const venueColour = venuesMenuColour(venues, venueStatuses);
+
+  const menuModel: MenuItem[] = [
+    {
+      template: (_item: any, options: any) => (
+        <a className={options.className} onClick={() => setShowVenues(true)} style={{ cursor: 'pointer', userSelect: 'none' }}>
+          <span className="pi pi-building-columns" style={{ color: venueColour, marginRight: '0.5rem' }} />
+          <span style={{ color: venueColour }}>Venues</span>
+        </a>
+      ),
+    },
+    {
+      template: (_item: any, options: any) => (
+        <a className={options.className} onClick={() => setShowSettings(true)} style={{ cursor: 'pointer' }}>
+          <span className="pi pi-cog" />
+        </a>
+      ),
+    },
+  ];
+
+  const menuStart = (
+    <span style={{ fontWeight: 700, fontSize: 16, marginRight: 8, color: 'var(--text)' }}>
+      AnconTrade
+    </span>
   );
+
+  // ─── Disconnect confirm footer ────────────────────────────────────────────
 
   const disconnectFooter = (
     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -265,15 +305,17 @@ export function App() {
     </div>
   );
 
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: 16, display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--bg)', color: 'var(--text)', minHeight: '100vh' }}>
+    <div style={{ fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--bg)', color: 'var(--text)', minHeight: '100vh' }}>
 
       {/* Cancel-reject modal */}
       <Dialog
         visible={cancelReject !== null}
         onHide={() => setCancelReject(null)}
         header={<span style={{ color: 'var(--status-rejected)' }}>Cancel Rejected</span>}
-        footer={cancelRejectFooter}
+        footer={<button onClick={() => setCancelReject(null)}>Dismiss</button>}
         style={{ minWidth: 360 }}
       >
         {cancelReject && (
@@ -315,130 +357,180 @@ export function App() {
         onDataChanged={refreshAdminData}
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>Ancontrade</h2>
-        <Button icon="pi pi-cog" outlined aria-label="Settings" onClick={() => setShowSettings(true)} />
-      </div>
-
-      <StatusBar alerts={statusAlerts} />
-
-      <Toolbar
-        start={
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-            <FloatLabel>
-              <Dropdown
-                inputId="venue-select"
-                value={selectedVenueId}
-                options={venues.map(v => ({ label: v.name, value: v.id }))}
-                onChange={e => setSelectedVenueId(e.value)}
-                style={{ minWidth: 160 }}
-              />
-              <label htmlFor="venue-select">Venue</label>
-            </FloatLabel>
-            <Button label="Connect" severity="success" outlined onClick={handleConnect} />
-            <Button label="Disconnect" severity="warning" outlined onClick={handleDisconnect} />
+      {/* Venues status + connect/disconnect dialog */}
+      <Dialog
+        visible={showVenues}
+        onHide={() => setShowVenues(false)}
+        header="Venues"
+        style={{ minWidth: 420 }}
+      >
+        {venues.length === 0 ? (
+          <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+            No venues configured. Open Settings to add a venue.
           </div>
-        }
-        end={
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: orConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
-              OR: {orConnected ? 'Connected' : 'Disconnected'}
-            </span>
-            <span style={{ fontSize: 12, color: mdConnected ? 'var(--status-filled)' : 'var(--status-rejected)' }}>
-              MD: {mdConnected ? 'Connected' : 'Disconnected'}
-            </span>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {venues.map(v => {
+              const st = venueStatuses[v.id];
+              const orConn = st?.orConnected ?? false;
+              const mdConn = st?.mdConnected ?? false;
+              const anyConn = orConn || mdConn;
+              const dot = (on: boolean) => (
+                <span style={{ color: on ? 'var(--status-filled)' : 'var(--status-rejected)', fontSize: 14 }}>
+                  {on ? '●' : '○'}
+                </span>
+              );
+              return (
+                <div
+                  key={v.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 12px',
+                    border: '1px solid var(--border-light)', borderRadius: 4,
+                    background: v.id === selectedVenueId ? 'rgba(128,128,128,0.1)' : undefined,
+                  }}
+                >
+                  <span
+                    style={{ flex: 1, fontSize: 14, fontWeight: v.id === selectedVenueId ? 600 : 400, cursor: 'pointer' }}
+                    onClick={() => { setSelectedVenueId(v.id); setShowVenues(false); }}
+                    title="Select venue"
+                  >
+                    {v.name}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'var(--text-muted)' }}>
+                    OR {dot(orConn)}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'var(--text-muted)' }}>
+                    MD {dot(mdConn)}
+                  </span>
+                  <Button
+                    label={anyConn ? 'Disconnect' : 'Connect'}
+                    severity={anyConn ? 'warning' : 'success'}
+                    outlined
+                    size="small"
+                    onClick={() => {
+                      if (anyConn) handleDisconnect(v.id);
+                      else void handleConnect(v.id);
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
-        }
-      />
+        )}
+      </Dialog>
 
-      {venue && (
-        <Splitter style={{ width: '100%', border: 'none', background: 'transparent' }}>
+      <Menubar model={menuModel} start={menuStart} />
 
-          {/* Left: instrument selector + order ticket + price ladder */}
-          <SplitterPanel size={38} minSize={25} style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
-            {instruments.length > 0 && (
+      <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <StatusBar alerts={statusAlerts} />
+
+        {venues.length > 0 && (
+          <Splitter style={{ width: '100%', border: 'none', background: 'transparent' }}>
+
+            {/* Left: venue + instrument selector + order ticket + price ladder */}
+            <SplitterPanel size={38} minSize={25} style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
               <Toolbar
                 start={
                   <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                     <FloatLabel>
                       <Dropdown
-                        inputId="instrument-select"
-                        value={selectedSymbol}
-                        options={instruments.map(i => ({ label: i.symbol, value: i.symbol }))}
-                        onChange={e => setSelectedSymbol(e.value)}
-                        style={{ minWidth: 120 }}
+                        inputId="venue-select"
+                        value={selectedVenueId}
+                        options={venues.map(v => ({ label: v.name, value: v.id }))}
+                        onChange={e => setSelectedVenueId(e.value)}
+                        style={{ minWidth: 160 }}
                       />
-                      <label htmlFor="instrument-select">Instrument</label>
+                      <label htmlFor="venue-select">Venue</label>
                     </FloatLabel>
-                    {instruments.find(i => i.symbol === selectedSymbol) && (
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        tick: {instruments.find(i => i.symbol === selectedSymbol)!.tickSize}
-                      </span>
+                    {venue && instruments.length > 0 && (
+                      <>
+                        <FloatLabel>
+                          <Dropdown
+                            inputId="instrument-select"
+                            value={selectedSymbol}
+                            options={instruments.map(i => ({ label: i.symbol, value: i.symbol }))}
+                            onChange={e => setSelectedSymbol(e.value)}
+                            style={{ minWidth: 120 }}
+                          />
+                          <label htmlFor="instrument-select">Instrument</label>
+                        </FloatLabel>
+                        {instruments.find(i => i.symbol === selectedSymbol) && (
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                            tick: {instruments.find(i => i.symbol === selectedSymbol)!.tickSize}
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                 }
                 end={
-                  mdConnected && selectedSymbol ? (
+                  venue && instruments.length > 0 && mdConnected && selectedSymbol ? (
                     subscribedSymbol === selectedSymbol
                       ? <span style={{ fontSize: 12, color: 'var(--status-filled)' }}>● Subscribed</span>
                       : <Button label="Subscribe" outlined onClick={() => subscribeToSymbol(selectedVenueId, selectedSymbol)} />
                   ) : undefined
                 }
               />
-            )}
-            <Splitter style={{ border: 'none', background: 'transparent', flex: 1 }}>
-              <SplitterPanel size={58} minSize={40} style={{ overflow: 'auto' }}>
-                <OrderTicket
-                  venueId={selectedVenueId}
-                  symbol={selectedSymbol || 'N/A'}
-                  tickSize={instruments.find(i => i.symbol === selectedSymbol)?.tickSize}
-                  accounts={venueAccounts}
-                  traderId={venueTraderId}
-                  priceOverride={priceOverride}
-                  onSubmitted={refreshOrders}
-                />
-              </SplitterPanel>
-              <SplitterPanel size={42} minSize={30} style={{ overflow: 'auto' }}>
-                <PriceLadder
-                  data={priceLevels?.symbol === selectedSymbol ? priceLevels : null}
-                  onPriceClick={setPriceOverride}
-                  fontSize={priceLadderFontSize}
-                />
-              </SplitterPanel>
-            </Splitter>
-          </SplitterPanel>
 
-          {/* Right: order blotter toolbar + blotter + events */}
-          <SplitterPanel size={62} minSize={30} style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
-            <Toolbar
-              start={
-                <FloatLabel>
-                  <Dropdown
-                    inputId="blotter-filter"
-                    value={blotterFilter}
-                    options={BLOTTER_FILTER_OPTIONS}
-                    onChange={e => setBlotterFilter(e.value)}
-                    style={{ minWidth: 130 }}
-                  />
-                  <label htmlFor="blotter-filter">Show</label>
-                </FloatLabel>
-              }
-              end={<Button label="Download CSV" icon="pi pi-download" outlined onClick={handleDownloadCsv} />}
-            />
-            <OrderBlotter
-              orders={orders}
-              onCancelRequest={handleCancelRequest}
-              onRowSelected={setSelectedClOrdId}
-              statusFilter={blotterFilter}
-              isDark={theme === 'dark'}
-            />
-            <div style={{ marginTop: 8 }}>
-              <OrderEventsPanel clOrdId={selectedClOrdId} isDark={theme === 'dark'} />
-            </div>
-          </SplitterPanel>
+              {venue && (
+                <>
+                  <Splitter style={{ border: 'none', background: 'transparent', flex: 1 }}>
+                    <SplitterPanel size={58} minSize={40} style={{ overflow: 'auto' }}>
+                      <OrderTicket
+                        venueId={selectedVenueId}
+                        symbol={selectedSymbol || 'N/A'}
+                        tickSize={instruments.find(i => i.symbol === selectedSymbol)?.tickSize}
+                        accounts={venueAccounts}
+                        traderId={venueTraderId}
+                        priceOverride={priceOverride}
+                        onSubmitted={refreshOrders}
+                      />
+                    </SplitterPanel>
+                    <SplitterPanel size={42} minSize={30} style={{ overflow: 'auto' }}>
+                      <PriceLadder
+                        data={priceLevels?.symbol === selectedSymbol ? priceLevels : null}
+                        onPriceClick={setPriceOverride}
+                        fontSize={priceLadderFontSize}
+                      />
+                    </SplitterPanel>
+                  </Splitter>
+                </>
+              )}
+            </SplitterPanel>
 
-        </Splitter>
-      )}
+            {/* Right: order blotter toolbar + blotter + events */}
+            <SplitterPanel size={62} minSize={30} style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
+              <Toolbar
+                start={
+                  <FloatLabel>
+                    <Dropdown
+                      inputId="blotter-filter"
+                      value={blotterFilter}
+                      options={BLOTTER_FILTER_OPTIONS}
+                      onChange={e => setBlotterFilter(e.value)}
+                      style={{ minWidth: 130 }}
+                    />
+                    <label htmlFor="blotter-filter">Show</label>
+                  </FloatLabel>
+                }
+                end={<Button label="Download CSV" icon="pi pi-download" outlined onClick={handleDownloadCsv} />}
+              />
+              <OrderBlotter
+                orders={orders}
+                onCancelRequest={handleCancelRequest}
+                onRowSelected={setSelectedClOrdId}
+                statusFilter={blotterFilter}
+                isDark={theme === 'dark'}
+              />
+              <div style={{ marginTop: 8 }}>
+                <OrderEventsPanel clOrdId={selectedClOrdId} isDark={theme === 'dark'} />
+              </div>
+            </SplitterPanel>
+
+          </Splitter>
+        )}
+      </div>
     </div>
   );
 }
