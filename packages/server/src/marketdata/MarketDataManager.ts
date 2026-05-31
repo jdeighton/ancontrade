@@ -4,11 +4,18 @@ import type { IFIXEngine } from '../venue/VenueManager.js';
 import { buildMDRequest } from './buildMDRequest.js';
 import { parseMDSnapshot } from './parseMDSnapshot.js';
 import { parseMDIncremental } from './parseMDIncremental.js';
+import { parseMDReqReject, MD_REQ_REJ_REASONS } from './parseMDReqReject.js';
 
 export interface PriceLevelsEvent {
   symbol: string;
   bids: PriceLevel[];
   asks: PriceLevel[];
+}
+
+export interface StatusAlertEvent {
+  ts: string;
+  kind: 'md-reject' | 'disconnect';
+  message: string;
 }
 
 interface Subscription {
@@ -24,6 +31,7 @@ const DEFAULT_DEPTH = 5;
 export class MarketDataManager {
   private readonly subscriptions = new Map<string, Subscription>(); // symbol → sub
   private readonly listeners = new Set<(e: PriceLevelsEvent) => void>();
+  private readonly alertListeners = new Set<(e: StatusAlertEvent) => void>();
   private depth = DEFAULT_DEPTH;
 
   constructor(private readonly engine: IFIXEngine) {
@@ -54,7 +62,31 @@ export class MarketDataManager {
     return () => this.listeners.delete(cb);
   }
 
+  onStatusAlert(cb: (e: StatusAlertEvent) => void): () => void {
+    this.alertListeners.add(cb);
+    return () => this.alertListeners.delete(cb);
+  }
+
+  emitAlert(event: StatusAlertEvent): void {
+    for (const cb of this.alertListeners) cb(event);
+  }
+
   private handleMessage(sessionId: string, raw: string): void {
+    const reject = parseMDReqReject(raw);
+    if (reject) {
+      // Remove the subscription the exchange rejected
+      for (const [symbol, sub] of this.subscriptions) {
+        if (sub.sessionId === sessionId && sub.reqId === reject.reqId) {
+          this.subscriptions.delete(symbol);
+          break;
+        }
+      }
+      const label = MD_REQ_REJ_REASONS[reject.reason] ?? `Code ${reject.reason}`;
+      const message = reject.text ? `MD Reject: ${label} — ${reject.text}` : `MD Reject: ${label}`;
+      this.emitAlert({ ts: new Date().toISOString(), kind: 'md-reject', message });
+      return;
+    }
+
     const snapshot = parseMDSnapshot(raw);
     if (snapshot) {
       const sub = this.findSub(sessionId, snapshot.symbol);

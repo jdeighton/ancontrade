@@ -176,3 +176,63 @@ describe('VenueManager', () => {
     expect(vm.getInstruments(venueId)).toEqual([]);
   });
 });
+
+describe('VenueManager — disconnect alerts', () => {
+  let engine: StubFIXEngine;
+  let vm: VenueManager;
+  let store: AdminStore;
+  let venueId: string;
+  let mdSessionId: string;
+  let orSessionId: string;
+
+  beforeEach(async () => {
+    engine = new StubFIXEngine();
+    store = new AdminStore(':memory:');
+    vm = new VenueManager(engine, store);
+
+    const mdSC = store.createSessionConfig({ name: 'MD', host: '127.0.0.1', port: 9001, senderCompId: 'CLI', targetCompId: 'MD_EXCH' });
+    const orSC = store.createSessionConfig({ name: 'OR', host: '127.0.0.1', port: 9002, senderCompId: 'CLI', targetCompId: 'OR_EXCH' });
+    const tr = store.createTraderIdConfig({ traderId: 'TRD1' });
+    const ac = store.createAccountConfig({ account: 'ACC001' });
+    const venue = store.createVenue({ name: 'Test', mdSessionConfigId: mdSC.id, orSessionConfigId: orSC.id, traderIdConfigId: tr.id, accountConfigIds: [ac.id] });
+    venueId = venue.id;
+
+    vm.connect(venueId);
+    mdSessionId = `CLI-MD_EXCH-FIX.4.4`;
+    orSessionId = `CLI-OR_EXCH-FIX.4.4`;
+
+    // Bring sessions to active state
+    engine.trigger(mdSessionId, 'active');
+    engine.trigger(orSessionId, 'active');
+  });
+
+  it('unexpected MD disconnect fires a disconnect alert', () => {
+    const alerts: { venueId: string; sessionName: string }[] = [];
+    vm.onDisconnectAlert((v, s) => alerts.push({ venueId: v, sessionName: s }));
+
+    engine.trigger(mdSessionId, 'inactive');
+
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].venueId).toBe(venueId);
+    expect(alerts[0].sessionName).toBe('market data');
+  });
+
+  it('unexpected OR disconnect fires a disconnect alert', () => {
+    const alerts: { venueId: string; sessionName: string }[] = [];
+    vm.onDisconnectAlert((v, s) => alerts.push({ venueId: v, sessionName: s }));
+
+    engine.trigger(orSessionId, 'inactive');
+
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].sessionName).toBe('order routing');
+  });
+
+  it('operator-initiated disconnect does NOT fire a disconnect alert', async () => {
+    const alerts: any[] = [];
+    vm.onDisconnectAlert(() => alerts.push(true));
+
+    await vm.disconnect(venueId);
+
+    expect(alerts).toHaveLength(0);
+  });
+});

@@ -86,3 +86,9 @@ export interface PriceLevelsEvent {
   bids: PriceLevel[];
   asks: PriceLevel[];
 }
+
+export interface StatusAlertEvent {
+  ts: string;
+  kind: 'md-reject' | 'disconnect';
+  message: string;
+}

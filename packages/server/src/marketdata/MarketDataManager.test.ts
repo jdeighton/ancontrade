@@ -127,6 +127,33 @@ describe('MarketDataManager', () => {
     expect(last.asks[0].price).toBe(1.106);
   });
 
+  it('35=Y fires status-alert with md-reject kind and decoded reason', () => {
+    mdm.subscribe(MD_SESSION, 'EUR/USD', TICK);
+    const reqId = engine.sent[0].fields.get(262)!;
+
+    const alerts: any[] = [];
+    mdm.onStatusAlert(e => alerts.push(e));
+
+    engine.trigger(MD_SESSION, fix([[35, 'Y'], [262, reqId], [281, '0'], [58, 'Unknown symbol']]));
+
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].kind).toBe('md-reject');
+    expect(alerts[0].message).toContain('Unknown symbol');
+    expect(alerts[0].ts).toBeDefined();
+  });
+
+  it('35=Y clears the subscription so re-subscribe is allowed', () => {
+    mdm.subscribe(MD_SESSION, 'EUR/USD', TICK);
+    const reqId = engine.sent[0].fields.get(262)!;
+
+    engine.trigger(MD_SESSION, fix([[35, 'Y'], [262, reqId], [281, '0']]));
+
+    // Should be able to subscribe again without being silently ignored
+    mdm.subscribe(MD_SESSION, 'EUR/USD', TICK);
+    const subscribeMsgs = engine.sent.filter(m => m.fields.get(35) === 'V' && m.fields.get(263) === '1');
+    expect(subscribeMsgs).toHaveLength(2);
+  });
+
   it('depth defaults to 5', () => {
     mdm.subscribe(MD_SESSION, 'EUR/USD', TICK);
     const events: any[] = [];

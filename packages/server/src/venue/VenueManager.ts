@@ -41,7 +41,9 @@ export class VenueManager {
   private readonly listeners = new Set<(s: VenueStatus) => void>();
   private readonly orListeners = new Set<(venueId: string, raw: string) => void>();
   private readonly mdListeners = new Set<(venueId: string, sessionId: string, raw: string) => void>();
+  private readonly disconnectAlertListeners = new Set<(venueId: string, sessionName: string) => void>();
   private readonly instruments = new Map<string, Instrument[]>();
+  private readonly operatorDisconnecting = new Set<string>(); // venueIds being intentionally disconnected
 
   constructor(
     private readonly engine: IFIXEngine,
@@ -70,6 +72,7 @@ export class VenueManager {
     };
 
     pair.mdSession.on('status', (status) => {
+      const wasConnected = pair.mdConnected;
       pair.mdConnected = status === 'active';
       if (status === 'active') {
         this.engine.sendMessage(pair.mdSession.id, new Map([
@@ -77,12 +80,18 @@ export class VenueManager {
           [320, randomUUID()],
           [559, '4'],
         ]));
+      } else if (wasConnected && !this.operatorDisconnecting.has(venueId)) {
+        this.fireDisconnectAlert(venueId, 'market data');
       }
       this.emit(venueId, { mdConnected: pair.mdConnected, orConnected: pair.orConnected });
     });
 
     pair.orSession.on('status', (status) => {
+      const wasConnected = pair.orConnected;
       pair.orConnected = status === 'active';
+      if (!pair.orConnected && wasConnected && !this.operatorDisconnecting.has(venueId)) {
+        this.fireDisconnectAlert(venueId, 'order routing');
+      }
       this.emit(venueId, { mdConnected: pair.mdConnected, orConnected: pair.orConnected });
     });
 
@@ -92,11 +101,13 @@ export class VenueManager {
   async disconnect(venueId: string): Promise<void> {
     const pair = this.active.get(venueId);
     if (!pair) return;
+    this.operatorDisconnecting.add(venueId);
     this.active.delete(venueId);
     await Promise.all([
       this.engine.removeSession(pair.mdSession.id),
       this.engine.removeSession(pair.orSession.id),
     ]);
+    this.operatorDisconnecting.delete(venueId);
     this.emit(venueId, { mdConnected: false, orConnected: false });
   }
 
@@ -149,6 +160,15 @@ export class VenueManager {
   onStatusChange(callback: (s: VenueStatus) => void): () => void {
     this.listeners.add(callback);
     return () => this.listeners.delete(callback);
+  }
+
+  onDisconnectAlert(callback: (venueId: string, sessionName: string) => void): () => void {
+    this.disconnectAlertListeners.add(callback);
+    return () => this.disconnectAlertListeners.delete(callback);
+  }
+
+  private fireDisconnectAlert(venueId: string, sessionName: string): void {
+    for (const cb of this.disconnectAlertListeners) cb(venueId, sessionName);
   }
 
   private emit(venueId: string, state: { mdConnected: boolean; orConnected: boolean }): void {

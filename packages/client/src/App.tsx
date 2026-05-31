@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AccountConfig, CancelRejectEvent, Instrument, OrderRecord, PriceLevelsEvent, TraderIdConfig, Venue, VenueStatus } from './types.js';
+import type { AccountConfig, CancelRejectEvent, Instrument, OrderRecord, PriceLevelsEvent, StatusAlertEvent, TraderIdConfig, Venue, VenueStatus } from './types.js';
 import { OrderTicket } from './OrderTicket.js';
 import { OrderBlotter } from './OrderBlotter.js';
 import { OrderEventsPanel } from './OrderEventsPanel.js';
 import { PriceLadder } from './PriceLadder.js';
+import { StatusBar } from './StatusBar.js';
 
 async function apiFetch<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -36,6 +37,7 @@ export function App() {
   const [cancelReject, setCancelReject] = useState<CancelRejectEvent | null>(null);
   const [selectedClOrdId, setSelectedClOrdId] = useState<string | null>(null);
   const [priceLevels, setPriceLevels] = useState<PriceLevelsEvent | null>(null);
+  const [statusAlerts, setStatusAlerts] = useState<StatusAlertEvent[]>([]);
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
   const wsRef = useRef<WebSocket | null>(null);
   const subscribedSymbolRef = useRef<string | null>(null);
@@ -86,6 +88,10 @@ export function App() {
         setCancelReject(msg.payload as CancelRejectEvent);
       } else if (msg.type === 'price-levels') {
         setPriceLevels(msg.payload as PriceLevelsEvent);
+      } else if (msg.type === 'status-alert') {
+        const alert = msg.payload as StatusAlertEvent;
+        setStatusAlerts(prev => [...prev, alert]);
+        if (alert.kind === 'md-reject') setPriceLevels(null);
       }
     };
     wsRef.current = ws;
@@ -192,6 +198,8 @@ export function App() {
           {theme === 'dark' ? 'Light' : 'Dark'}
         </button>
       </div>
+
+      <StatusBar alerts={statusAlerts} />
 
       {orConnected && hasOpenOrders && (
         <div style={{ padding: '8px 12px', background: 'var(--warning-bg)', color: 'var(--warning-text)', borderRadius: 4, fontSize: 13 }}>
