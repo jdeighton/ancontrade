@@ -87,11 +87,13 @@ export function OrderBlotter({ orders, onCancelRequest, onRowSelected, onResetHi
       valueGetter: (p: any) => fmtTime(p.data.entryTime),
       filterValueGetter: (p: any) => p.data.entryTime ? new Date(p.data.entryTime) : null,
       headerName: 'Entry Time', flex: 1, filter: 'agDateColumnFilter',
+      filterParams: { includeTime: true },
     },
     {
       valueGetter: (p: any) => fmtTime(p.data.lastUpdated),
       filterValueGetter: (p: any) => p.data.lastUpdated ? new Date(p.data.lastUpdated) : null,
       headerName: 'Last Updated', flex: 1, filter: 'agDateColumnFilter',
+      filterParams: { includeTime: true },
     },
     {
       headerName: '', minWidth: 100, sortable: false, filter: false,
