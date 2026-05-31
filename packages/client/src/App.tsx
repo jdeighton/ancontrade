@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccountConfig, CancelRejectEvent, Instrument, OrderRecord, TraderIdConfig, Venue, VenueStatus } from './types.js';
 import { OrderTicket } from './OrderTicket.js';
 import { OrderBlotter } from './OrderBlotter.js';
+import { OrderEventsPanel } from './OrderEventsPanel.js';
 
 async function apiFetch<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -32,6 +33,7 @@ export function App() {
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const [cancelReject, setCancelReject] = useState<CancelRejectEvent | null>(null);
+  const [selectedClOrdId, setSelectedClOrdId] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -218,7 +220,10 @@ export function App() {
                 Reset History
               </button>
             </div>
-            <OrderBlotter orders={orders} onCancelRequest={handleCancelRequest} />
+            <OrderBlotter orders={orders} onCancelRequest={handleCancelRequest} onRowSelected={setSelectedClOrdId} />
+            <div style={{ marginTop: 16 }}>
+              <OrderEventsPanel clOrdId={selectedClOrdId} />
+            </div>
           </div>
         </div>
       )}

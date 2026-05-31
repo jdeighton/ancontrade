@@ -16,9 +16,10 @@ const ORD_REJ_REASONS: Record<number, string> = {
 interface Props {
   orders: OrderRecord[];
   onCancelRequest: (clOrdId: string) => void;
+  onRowSelected?: (clOrdId: string | null) => void;
 }
 
-export function OrderBlotter({ orders, onCancelRequest }: Props) {
+export function OrderBlotter({ orders, onCancelRequest, onRowSelected }: Props) {
   const columnDefs: ColDef<OrderRecord>[] = [
     { field: 'clOrdId',   headerName: 'ClOrdID',      flex: 2 },
     { field: 'symbol',    headerName: 'Symbol',        flex: 1 },
@@ -74,6 +75,12 @@ export function OrderBlotter({ orders, onCancelRequest }: Props) {
         columnDefs={columnDefs}
         domLayout="autoHeight"
         getRowId={p => p.data.clOrdId}
+        rowSelection="single"
+        onRowSelected={(e) => {
+          if (onRowSelected) {
+            onRowSelected(e.node.isSelected() ? (e.data?.clOrdId ?? null) : null);
+          }
+        }}
       />
     </div>
   );

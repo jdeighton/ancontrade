@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { OrderManager } from './OrderManager.js';
 import type { AdminStore } from '../admin/AdminStore.js';
+import type { FIXMessageLog } from '../fix/FIXMessageLog.js';
 
-export function registerOrderRoutes(app: FastifyInstance, orderManager: OrderManager, store: AdminStore): void {
+export function registerOrderRoutes(app: FastifyInstance, orderManager: OrderManager, store: AdminStore, fixLog: FIXMessageLog): void {
   app.post('/orders', async (req, reply) => {
     const { venueId, symbol, side, price, quantity, account, traderId } = req.body as {
       venueId: string;
@@ -25,6 +26,11 @@ export function registerOrderRoutes(app: FastifyInstance, orderManager: OrderMan
 
   app.get('/orders', async () => {
     return store.listOrders();
+  });
+
+  app.get('/orders/:clOrdId/events', async (req) => {
+    const { clOrdId } = req.params as { clOrdId: string };
+    return fixLog.getEntriesForClOrdId(clOrdId);
   });
 
   app.delete('/orders/:clOrdId', async (req, reply) => {

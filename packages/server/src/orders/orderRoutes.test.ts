@@ -208,6 +208,67 @@ describe('Order rejection — 35=8 OrdStatus=8', () => {
   });
 });
 
+describe('GET /orders/:clOrdId/events', () => {
+  const SOH = '\x01';
+  const fix = (fields: Record<number, string>) =>
+    Object.entries(fields).map(([t, v]) => `${t}=${v}`).join(SOH);
+
+  it('returns OUT entry for submitted order and IN entry after ER', async () => {
+    const { app, engine, venueId } = await makeConnectedServer();
+
+    const postRes = await app.inject({
+      method: 'POST', url: '/orders',
+      body: { venueId, symbol: 'EUR/USD', side: 'buy', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' },
+    });
+    const { clOrdId } = postRes.json();
+    const orSessionId = 'CLI-OR_EXCH-FIX.4.4';
+
+    engine.triggerIncoming(orSessionId, fix({ 35: '8', 11: clOrdId, 37: 'EXCH001', 39: '0', 14: '0', 6: '0' }));
+
+    const eventsRes = await app.inject({ method: 'GET', url: `/orders/${clOrdId}/events` });
+    expect(eventsRes.statusCode).toBe(200);
+    const events = eventsRes.json();
+    expect(events).toHaveLength(2);
+    expect(events[0].dir).toBe('OUT');
+    expect(events[0].fields['35']).toBe('D');
+    expect(events[0].fields['11']).toBe(clOrdId);
+    expect(events[1].dir).toBe('IN');
+    expect(events[1].fields['35']).toBe('8');
+  });
+
+  it('returns empty array for unknown clOrdId', async () => {
+    const { app } = await makeConnectedServer();
+    const res = await app.inject({ method: 'GET', url: '/orders/UNKNOWN/events' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([]);
+  });
+
+  it('cancel request and cancel reject both appear in events', async () => {
+    const { app, engine, venueId } = await makeConnectedServer();
+
+    const postRes = await app.inject({
+      method: 'POST', url: '/orders',
+      body: { venueId, symbol: 'EUR/USD', side: 'buy', price: 1.105, quantity: 1000, account: 'ACC001', traderId: 'TRD1' },
+    });
+    const { clOrdId } = postRes.json();
+    const orSessionId = 'CLI-OR_EXCH-FIX.4.4';
+
+    engine.triggerIncoming(orSessionId, fix({ 35: '8', 11: clOrdId, 37: 'EXCH001', 39: '0', 14: '0', 6: '0' }));
+    await app.inject({ method: 'DELETE', url: `/orders/${clOrdId}` });
+    const cancelClOrdId = engine.sent[engine.sent.length - 1].fields.get(11)!;
+    // 35=9 includes tag 41=OrigClOrdID so FIXMessageLog indexes it under clOrdId
+    engine.triggerIncoming(orSessionId, fix({ 35: '9', 11: cancelClOrdId, 41: clOrdId, 102: '1', 58: 'Unknown order' }));
+
+    const eventsRes = await app.inject({ method: 'GET', url: `/orders/${clOrdId}/events` });
+    const events = eventsRes.json();
+    // OUT: NOS, IN: ER(New), OUT: CancelReq, IN: CancelReject (indexed via tag 41=OrigClOrdID)
+    const msgTypes = events.map((e: any) => `${e.dir}:${e.fields['35']}`);
+    expect(msgTypes).toContain('OUT:D');
+    expect(msgTypes).toContain('OUT:F');
+    expect(msgTypes).toContain('IN:9');
+  });
+});
+
 describe('DELETE /orders/:clOrdId — cancel workflow', () => {
   const SOH = '\x01';
   const fix = (fields: Record<number, string>) =>
@@ -267,7 +328,7 @@ describe('DELETE /orders/:clOrdId — cancel workflow', () => {
     await app.inject({ method: 'DELETE', url: `/orders/${clOrdId}` });
     const cancelClOrdId = engine.sent[engine.sent.length - 1].fields.get(11)!;
 
-    engine.triggerIncoming(orSessionId, fix({ 35: '9', 11: cancelClOrdId, 102: '1', 58: 'Unknown order' }));
+    engine.triggerIncoming(orSessionId, fix({ 35: '9', 11: cancelClOrdId, 41: clOrdId, 102: '1', 58: 'Unknown order' }));
 
     // Order should remain in New state (cancel was rejected)
     const res = await app.inject({ method: 'GET', url: '/orders' });

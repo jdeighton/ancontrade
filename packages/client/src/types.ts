@@ -67,3 +67,10 @@ export interface VenueStatus {
   mdConnected: boolean;
   orConnected: boolean;
 }
+
+export interface FIXLogEntry {
+  ts: string;
+  dir: 'IN' | 'OUT';
+  session: string;
+  fields: Record<string, string>;
+}

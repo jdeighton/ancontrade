@@ -8,17 +8,18 @@ import { registerVenueRoutes } from './venue/venueRoutes.js';
 import { OrderManager } from './orders/OrderManager.js';
 import { registerOrderRoutes } from './orders/orderRoutes.js';
 import { registerInstrumentRoutes } from './instruments/instrumentRoutes.js';
+import { FIXMessageLog } from './fix/FIXMessageLog.js';
+import { LoggingFIXEngine } from './fix/LoggingFIXEngine.js';
 
-export function buildServer(dbPath = ':memory:', engine?: IFIXEngine) {
+export function buildServer(dbPath = ':memory:', engine?: IFIXEngine, logDir: string | null = null) {
   const app = Fastify({ logger: false });
   void app.register(websocket);
 
   const adminStore = new AdminStore(dbPath);
+  const fixLog = new FIXMessageLog(logDir);
+  const loggingEngine: IFIXEngine | null = engine ? new LoggingFIXEngine(engine, fixLog) : null;
   const venueManager = new VenueManager(
-    // Real FIX engine injected at startup via index.ts; use null here so tests
-    // that only call /health don't need a real engine. VenueManager is unused
-    // in those tests.
-    engine ?? null as any,
+    loggingEngine ?? null as any,
     adminStore,
   );
   const orderManager = new OrderManager(
@@ -49,7 +50,7 @@ export function buildServer(dbPath = ':memory:', engine?: IFIXEngine) {
 
   registerAdminRoutes(app, adminStore);
   registerVenueRoutes(app, venueManager);
-  registerOrderRoutes(app, orderManager, adminStore);
+  registerOrderRoutes(app, orderManager, adminStore, fixLog);
   registerInstrumentRoutes(app, venueManager);
 
   return app;
